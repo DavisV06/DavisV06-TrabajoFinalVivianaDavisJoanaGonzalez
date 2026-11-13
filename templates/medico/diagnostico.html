@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Diagnóstico — Estudio #{{ estudio.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('medico.consulta', consulta_id=consulta_propia.id) if consulta_propia else url_for('medico.dashboard') }}" class="btn btn-ghost btn-sm">← Volver</a>
+    <div>
+      <h1>Diagnóstico: {{ estudio.ojo_label }}</h1>
+      <p>Paciente: <strong>{{ consulta.paciente.usuario.nombre }}</strong> ·
+         Consulta del {{ consulta.fecha.strftime('%d/%m/%Y') }}</p>
+    </div>
+  </div>
+</div>
+
+{% if es_referido %}
+<div class="notice" style="margin-bottom:1.25rem">
+  Este estudio pertenece a la consulta original de
+  {{ consulta.medico.usuario.nombre if consulta.medico and consulta.medico.usuario else 'otro médico' }},
+  que te fue referida. Puedes revisar el diagnóstico y rectificarlo si lo consideras necesario;
+  la rectificación queda registrada a tu nombre.
+</div>
+{% endif %}
+
+<div class="dx-grid">
+  {# Left: Retinography + AI result #}
+  <div>
+    <div class="eye-card">
+      <div class="eye-card__header">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>
+        Retinografía — {{ estudio.ojo_label }}
+      </div>
+      {% if estudio.imagen %}
+        <img class="eye-card__img"
+             src="{{ url_for('ver_imagen', imagen_id=estudio.imagen.id) }}"
+             alt="Retinografía {{ estudio.ojo_label }}" />
+      {% else %}
+        <div style="aspect-ratio:1;background:#111;display:flex;align-items:center;justify-content:center;color:#666">
+          Sin imagen
+        </div>
+      {% endif %}
+      <div class="eye-card__body">
+        {% if pred %}
+          <p class="text-xs text-muted font-bold" style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">
+            Resultado del modelo predictivo ({{ pred.modelo.nombre if pred.modelo else 'Modelo' }})
+          </p>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="badge badge--{{ pred.clase.value }}">{{ pred.clase.label }}</span>
+            <span class="text-xs text-muted">{{ "%.1f"|format(pred.confianza * 100) }}% confianza</span>
+            <span class="text-xs text-muted">{{ pred.ms_computo }} ms</span>
+          </div>
+
+          {% if pred.probabilidades %}
+          <p class="text-xs text-muted mb-2">Distribución de probabilidades:</p>
+          <table class="prob-table" style="margin-bottom:1rem">
+            {% for pp in pred.probabilidades|sort(attribute='valor', reverse=True) %}
+            <tr>
+              <td>{{ pp.clase.label }}</td>
+              <td>
+                <div class="prob-bar-wrap">
+                  <div class="prob-bar prob-bar--{{ pp.clase.value }}"
+                       data-value="{{ pp.valor }}"></div>
+                </div>
+              </td>
+              <td>{{ "%.1f"|format(pp.porcentaje) }}%</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-muted">No hay resultado del modelo predictivo disponible para este estudio.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Right: Diagnostic form #}
+  <div>
+    <div class="card">
+      <div class="card-body">
+        {% if dx_vigente %}
+          <p class="card-title">Diagnóstico vigente</p>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="badge badge--{{ dx_vigente.clase.value }}">{{ dx_vigente.clase.label }}</span>
+            <span class="badge badge--{{ dx_vigente.estado_badge }}">{{ dx_vigente.estado.value|title }}</span>
+            <span class="text-xs text-muted">v{{ dx_vigente.version }}</span>
+          </div>
+          {% if dx_vigente.observaciones %}
+            <p class="text-sm text-muted mb-3">{{ dx_vigente.observaciones }}</p>
+          {% endif %}
+          <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0"/>
+          <p class="card-title">Rectificar diagnóstico</p>
+          <button class="btn btn-outline btn-sm" data-modal="modal-rectificar">
+            Emitir rectificación
+          </button>
+
+        {% else %}
+          <p class="card-title">Emitir diagnóstico</p>
+          <p class="text-sm text-muted mb-4">
+            Revisa el resultado del modelo predictivo y confirma o corrige el diagnóstico.
+          </p>
+
+          {# Confirm: uses AI prediction class directly #}
+          {% if pred %}
+            <form method="POST" action="{{ url_for('medico.confirmar', estudio_id=estudio.id) }}"
+                  class="no-double-submit" style="margin-bottom:1.5rem">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <div class="form-group">
+                <label class="form-label" for="obs-confirm">Observaciones (opcional)</label>
+                <textarea class="form-control" id="obs-confirm" name="observaciones" rows="3"
+                          placeholder="Notas clínicas adicionales…"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-lg"
+                      onclick="return confirm('¿Confirmar el diagnóstico del modelo predictivo: {{ pred.clase.label }}?')">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Confirmar diagnóstico del modelo predictivo
+              </button>
+              <p class="form-text mt-2">
+                Se confirmará: <strong>{{ pred.clase.label }}</strong> ({{ "%.1f"|format(pred.confianza*100) }}%)
+              </p>
+            </form>
+          {% endif %}
+
+          <button class="btn btn-outline" data-modal="modal-rectificar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Emitir diagnóstico diferente
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Historial de versiones #}
+    {% if historial %}
+    <div class="card mt-4">
+      <div class="card-body">
+        <p class="card-title text-sm">Historial diagnóstico</p>
+        <div class="table-wrap">
+          <table class="table" style="font-size:.8rem">
+            <thead>
+              <tr>
+                <th>v.</th>
+                <th>Clase</th>
+                <th>Estado</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in historial|sort(attribute='version', reverse=True) %}
+              <tr>
+                <td>{{ d.version }}</td>
+                <td><span class="badge badge--{{ d.clase.value }}">{{ d.clase.label }}</span></td>
+                <td><span class="badge badge--{{ d.estado_badge }}">{{ d.estado.value }}</span></td>
+                <td style="white-space:nowrap">{{ d.creado_en.strftime('%d/%m/%Y %H:%M') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# Modal: Rectificar / Emitir diagnóstico diferente #}
+<div class="modal-overlay" id="modal-rectificar" role="dialog" aria-modal="true"
+     aria-labelledby="modal-title-rect">
+  <div class="modal">
+    <div class="modal__header">
+      <p class="modal__title" id="modal-title-rect">
+        {% if dx_vigente %}Rectificar diagnóstico{% else %}Emitir diagnóstico{% endif %}
+      </p>
+      <button class="btn btn-ghost btn-sm modal-close" aria-label="Cerrar">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('medico.rectificar', estudio_id=estudio.id) }}"
+          class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="modal__body">
+        <div class="form-group">
+          <label class="form-label" for="rect-clase">Diagnóstico *</label>
+          <select class="form-control" id="rect-clase" name="clase" required>
+            <option value="">— Selecciona —</option>
+            {% for c in ClaseDx %}
+              <option value="{{ c.value }}"
+                {% if dx_vigente and dx_vigente.clase == c %}selected{% endif %}>
+                {{ c.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rect-motivo">Motivo de cambio *</label>
+          <textarea class="form-control" id="rect-motivo" name="motivo_cambio" rows="3"
+                    placeholder="Justificación clínica del diagnóstico diferente…"
+                    required maxlength="500"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rect-obs">Observaciones adicionales</label>
+          <textarea class="form-control" id="rect-obs" name="observaciones" rows="2"
+                    maxlength="1000"></textarea>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn-outline modal-close">Cancelar</button>
+        <button type="submit" class="btn btn-navy">Guardar diagnóstico</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

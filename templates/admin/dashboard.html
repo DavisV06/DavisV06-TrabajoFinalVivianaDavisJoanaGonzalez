@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Resumen general{% endblock %}
+
+{% block extra_head %}
+<style>
+.clinic-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 900px) { .clinic-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .clinic-kpis { grid-template-columns: 1fr; } }
+
+.ckpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.1rem 1.25rem;
+}
+.ckpi__label {
+  font-size: .7rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--ink-muted); margin-bottom: .35rem;
+}
+.ckpi__value { font-size: 2rem; font-weight: 900; color: var(--ink); line-height: 1.1; }
+.ckpi--indigo .ckpi__value { color: var(--indigo); }
+.ckpi--teal   .ckpi__value { color: var(--teal); }
+.ckpi--amber  .ckpi__value { color: var(--amber); }
+.ckpi--red    .ckpi__value { color: var(--red); }
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.dash-grid > * { min-width: 0; }
+@media (max-width: 860px) { .dash-grid { grid-template-columns: 1fr; } }
+
+.act-item {
+  display: flex; gap: .75rem; padding: .5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.act-item:last-child { border-bottom: none; }
+.act-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--indigo); flex-shrink: 0; margin-top: .4rem;
+}
+.act-msg { font-size: .82rem; color: var(--ink); }
+.act-time { font-size: .68rem; color: var(--ink-muted); }
+
+.med-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.med-table th {
+  text-align: left; padding: .45rem .75rem;
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--ink-muted);
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.med-table td { padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+.med-table tr:last-child td { border-bottom: none; }
+.med-table tr:hover td { background: var(--bg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Resumen general</h1>
+  <p>Vista consolidada del estado clínico del sistema.</p>
+</div>
+
+{# KPI grid #}
+<div class="clinic-kpis">
+  <div class="ckpi ckpi--indigo">
+    <p class="ckpi__label">Pacientes totales</p>
+    <p class="ckpi__value">{{ kpis.total_pacientes or 0 }}</p>
+  </div>
+  <div class="ckpi ckpi--teal">
+    <p class="ckpi__label">Médicos activos</p>
+    <p class="ckpi__value">{{ kpis.medicos_activos or 0 }}</p>
+  </div>
+  <div class="ckpi">
+    <p class="ckpi__label">Total citas</p>
+    <p class="ckpi__value">{{ kpis.total_citas or 0 }}</p>
+  </div>
+  <div class="ckpi">
+    <p class="ckpi__label">Diagnósticos vigentes</p>
+    <p class="ckpi__value">{{ kpis.dx_total or 0 }}</p>
+  </div>
+  <div class="ckpi ckpi--amber">
+    <p class="ckpi__label">Dx pendientes</p>
+    <p class="ckpi__value">{{ kpis.dx_pendientes or 0 }}</p>
+  </div>
+  <div class="ckpi">
+    <p class="ckpi__label">Tasa rectificación</p>
+    <p class="ckpi__value">{{ kpis.pct_rectificados or 0 }}%</p>
+  </div>
+  <div class="ckpi ckpi--indigo">
+    <p class="ckpi__label">Citas agendadas</p>
+    <p class="ckpi__value">{{ kpis.citas_agendadas or 0 }}</p>
+  </div>
+  <div class="ckpi">
+    <p class="ckpi__label">Modelo predictivo</p>
+    <p class="ckpi__value" style="font-size:1rem;padding-top:.4rem">
+      {% if modelo_activo %}{{ modelo_activo.nombre }}{% else %}—{% endif %}
+    </p>
+  </div>
+</div>
+
+{# Main 2-col: citas chart + activity #}
+<div class="dash-grid">
+  <div class="card">
+    <div class="card-body">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin-bottom:.75rem">
+        Citas por mes (desde hace 7 meses)
+      </p>
+      <canvas id="chart-citas-mes" height="440" style="display:block;width:100%;height:440px"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin-bottom:.75rem">
+        Actividad reciente
+      </p>
+      {% if actividad %}
+        {% for a in actividad %}
+        {% set act_verbos = {'I': 'Registró', 'U': 'Actualizó', 'D': 'Eliminó'} %}
+        {% set act_tablas = {
+          'diagnostico': 'un diagnóstico', 'consulta': 'una consulta', 'estudio': 'un estudio',
+          'asignacion': 'una asignación', 'paciente': 'un paciente', 'usuario': 'un usuario',
+          'medico': 'un médico', 'imagen': 'una imagen', 'prediccion': 'una predicción',
+          'notificacion': 'una notificación', 'modelo': 'un modelo'
+        } %}
+        <div class="act-item">
+          <div class="act-dot"></div>
+          <div>
+            <p class="act-msg">
+              <strong>{{ a.nombre_usuario or 'Sistema' }}</strong>
+              — {{ act_verbos.get(a.operacion, 'Modificó') }} {{ act_tablas.get(a.tabla, 'un registro de ' ~ a.tabla) }}
+            </p>
+            <p class="act-time">{{ a.ocurrido_en.strftime('%d/%m/%Y %H:%M') if a.ocurrido_en else '—' }}</p>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-muted" style="padding:1rem 0">Sin actividad reciente.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# Doctor performance table #}
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="card-body">
+    <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin-bottom:.75rem">
+      Rendimiento por médico
+    </p>
+    {% if medicos_tabla %}
+    <div style="overflow-x:auto">
+      <table class="med-table">
+        <thead>
+          <tr>
+            <th>Médico</th>
+            <th>Especialidad</th>
+            <th>Pacientes</th>
+            <th>Citas este mes</th>
+            <th>Total dx</th>
+            <th>Tasa rect. %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in medicos_tabla %}
+          <tr>
+            <td style="font-weight:600">{{ m.nombre }}</td>
+            <td>{{ m.especialidad or '—' }}</td>
+            <td style="font-variant-numeric:tabular-nums;text-align:right">{{ m.pacientes or 0 }}</td>
+            <td style="font-variant-numeric:tabular-nums;text-align:right">{{ m.citas_mes or 0 }}</td>
+            <td style="font-variant-numeric:tabular-nums;text-align:right">{{ m.total_dx or 0 }}</td>
+            <td style="font-variant-numeric:tabular-nums;text-align:right">
+              {% if m.tasa_rect is not none %}{{ m.tasa_rect }}%{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm text-muted">Sin médicos registrados.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div style="display:flex;gap:.75rem;flex-wrap:wrap">
+  <a href="{{ url_for('admin.usuarios') }}" class="btn btn-outline btn-sm">Gestionar usuarios</a>
+  <a href="{{ url_for('admin.modelos') }}" class="btn btn-outline btn-sm">Modelos predictivos</a>
+  <a href="{{ url_for('admin.analytics') }}" class="btn btn-outline btn-sm">Tableros analíticos</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var rows = {{ citas_mes_rows | map(attribute='mes') | list | tojson }};
+  var vals = {{ citas_mes_rows | map(attribute='total') | list | tojson }};
+
+  var MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var canvas = document.getElementById('chart-citas-mes');
+  if (!canvas || !rows.length) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.offsetWidth || 500;
+  canvas.width = W;
+  var H = canvas.height;
+  var pad = { t: 12, r: 12, b: 32, l: 36 };
+  var max = Math.max.apply(null, vals) || 1;
+  var style = getComputedStyle(document.documentElement);
+  var indigoBg = 'rgba(63,81,217,.15)';
+  var indigoLine = style.getPropertyValue('--indigo').trim() || '#3f51d9';
+  var borderC = style.getPropertyValue('--border').trim() || '#e1e7f0';
+  var inkMuted = style.getPropertyValue('--ink-muted').trim() || '#888';
+
+  var n = rows.length;
+  function xPos(i) { return pad.l + (i / (n - 1 || 1)) * (W - pad.l - pad.r); }
+  function yPos(v) { return pad.t + (1 - v / max) * (H - pad.t - pad.b); }
+
+  // Grid
+  ctx.strokeStyle = borderC; ctx.lineWidth = 0.5;
+  for (var i = 0; i <= 4; i++) {
+    var y = pad.t + (H - pad.t - pad.b) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = inkMuted; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(Math.round(max * (1 - i / 4)), pad.l - 4, y + 3);
+  }
+
+  if (n < 2) return;
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), H - pad.b);
+  ctx.lineTo(xPos(0), yPos(vals[0]));
+  for (var j = 1; j < n; j++) ctx.lineTo(xPos(j), yPos(vals[j]));
+  ctx.lineTo(xPos(n - 1), H - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = indigoBg;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), yPos(vals[0]));
+  for (var k = 1; k < n; k++) ctx.lineTo(xPos(k), yPos(vals[k]));
+  ctx.strokeStyle = indigoLine; ctx.lineWidth = 2;
+  ctx.lineJoin = 'round'; ctx.stroke();
+
+  // Dots + x labels
+  rows.forEach(function (m, i) {
+    ctx.beginPath();
+    ctx.arc(xPos(i), yPos(vals[i]), 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = indigoLine; ctx.fill();
+
+    ctx.fillStyle = inkMuted; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(MESES[parseInt(m.slice(5), 10) - 1], xPos(i), H - 8);
+  });
+})();
+</script>
+{% endblock %}

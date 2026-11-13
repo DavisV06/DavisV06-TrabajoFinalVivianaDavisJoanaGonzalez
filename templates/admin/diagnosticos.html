@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Diagnósticos{% endblock %}
+
+{% block extra_head %}
+<style>
+.conc-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 600px) { .conc-row { grid-template-columns: 1fr; } }
+.act-calor { border-collapse: separate; border-spacing: 3px; width: 100%; font-size: .7rem; }
+.act-calor th { font-weight: 600; color: var(--ink-muted); padding: 0 .25rem; white-space: nowrap; text-align: center; }
+.act-calor td { height: 28px; min-width: 34px; text-align: center; border-radius: 4px; background: var(--border); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.conc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 1.1rem 1.25rem;
+}
+.conc-card__label {
+  font-size: .7rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--ink-muted); margin-bottom: .35rem;
+}
+.conc-card__value { font-size: 2rem; font-weight: 900; line-height: 1.1; }
+.conc-card--green  .conc-card__value { color: var(--green); }
+.conc-card--amber  .conc-card__value { color: var(--amber); }
+.conc-card--indigo .conc-card__value { color: var(--indigo); }
+
+.dx-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.dx-table th {
+  text-align: left; padding: .45rem .75rem;
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--ink-muted);
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.dx-table td { padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+.dx-table tr:last-child td { border-bottom: none; }
+.dx-table tr:hover td { background: var(--bg); }
+
+.prec-bar-track {
+  display: block; height: 6px; border-radius: 3px;
+  background: var(--border); margin-top: .25rem; overflow: hidden;
+}
+.prec-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--green); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Diagnósticos</h1>
+  <p>Concordancia entre el modelo predictivo y la validación médica.</p>
+</div>
+
+{# Concordance KPIs #}
+<div class="conc-row">
+  <div class="conc-card conc-card--green">
+    <p class="conc-card__label">Concordancia entre modelo predictivo y médico</p>
+    <p class="conc-card__value">{{ concordancia.pct_concordancia or 0 }}%</p>
+    <p class="text-sm text-muted" style="margin-top:.35rem">
+      {{ concordancia.confirmados or 0 }} confirmados de {{ concordancia.total or 0 }} vigentes (incluye pendientes)
+    </p>
+  </div>
+  <div class="conc-card conc-card--amber">
+    <p class="conc-card__label">Rectificados</p>
+    <p class="conc-card__value">{{ concordancia.rectificados or 0 }}</p>
+    <p class="text-sm text-muted" style="margin-top:.35rem">Diagnósticos corregidos por el médico</p>
+  </div>
+  <div class="conc-card conc-card--indigo">
+    <p class="conc-card__label">Total diagnósticos</p>
+    <p class="conc-card__value">{{ concordancia.total or 0 }}</p>
+    <p class="text-sm text-muted" style="margin-top:.35rem">Diagnósticos con estado vigente</p>
+  </div>
+</div>
+
+{# Two-col layout: table + trend chart #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem">
+
+  {# By class table #}
+  <div class="card">
+    <div class="card-body">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin-bottom:.75rem">
+        Por categoría de diagnóstico
+      </p>
+      {% set clase_labels = {'normal':'Normal','rd':'Retinop. Diabética','glaucoma':'Glaucoma','catarata':'Catarata'} %}
+      {% if clase_rows %}
+      <div style="overflow-x:auto">
+        <table class="dx-table">
+          <thead>
+            <tr>
+              <th>Categoría</th>
+              <th style="text-align:right">Total</th>
+              <th style="text-align:right">Confirmados</th>
+              <th style="text-align:right">Rectificados</th>
+              <th>% confirmados</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in clase_rows %}
+            {% set pct = (r.confirmados / r.total * 100) if r.total else 0 %}
+            <tr>
+              <td>
+                <span class="badge badge--{{ r.clase }}" style="font-size:.68rem">
+                  {{ clase_labels.get(r.clase, r.clase) }}
+                </span>
+              </td>
+              <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.total }}</td>
+              <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--green)">{{ r.confirmados }}</td>
+              <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--amber)">{{ r.rectificados }}</td>
+              <td style="min-width:80px">
+                <span style="font-size:.72rem;font-weight:700">{{ "%.0f"|format(pct) }}%</span>
+                <span class="prec-bar-track">
+                  <span class="prec-bar-fill" style="width:{{ "%.0f"|format(pct) }}%"></span>
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-sm text-muted">Sin datos disponibles.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Trend chart #}
+  <div class="card">
+    <div class="card-body">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin-bottom:.75rem">
+        Tendencia (últimos 7 meses)
+      </p>
+      <canvas id="chart-trend" height="220" style="display:block;width:100%;height:220px"></canvas>
+      <div style="display:flex;gap:1rem;font-size:.7rem;margin-top:.5rem;color:var(--ink-muted)">
+        <span style="display:inline-flex;align-items:center;gap:4px">
+          <span style="width:10px;height:3px;background:var(--green);display:inline-block;border-radius:2px"></span>
+          Confirmados
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:4px">
+          <span style="width:10px;height:3px;background:var(--amber);display:inline-block;border-radius:2px"></span>
+          Rectificados
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+{# Mapa de calor de actividad #}
+<div class="card" style="margin-top:1rem">
+  <div class="card-body">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.9rem">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-muted);margin:0">
+        Actividad de los usuarios por día y hora
+      </p>
+      <div id="act-filtros" style="display:flex;gap:.4rem">
+        <button type="button" class="btn btn-indigo btn-sm" data-rol="" aria-pressed="true">Todos</button>
+        <button type="button" class="btn btn-outline btn-sm" data-rol="medico" aria-pressed="false">Médicos</button>
+        <button type="button" class="btn btn-outline btn-sm" data-rol="paciente" aria-pressed="false">Pacientes</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto"><table id="act-calor" class="act-calor"></table></div>
+    <p class="text-sm text-muted" style="margin-top:.75rem">
+      <span id="act-total"></span> Médicos: diagnósticos emitidos. Pacientes: estudios cargados. Un color más intenso indica más actividad.
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var trendData = {{ trend_rows | map(attribute='mes') | list | tojson }};
+  var confirmed = {{ trend_rows | map(attribute='confirmados') | list | tojson }};
+  var rectified = {{ trend_rows | map(attribute='rectificados') | list | tojson }};
+
+  var MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var canvas = document.getElementById('chart-trend');
+  if (!canvas || !trendData.length) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.offsetWidth || 400;
+  canvas.width = W;
+  var H = canvas.height;
+  var pad = { t: 12, r: 12, b: 28, l: 32 };
+  var max = Math.max.apply(null, confirmed.concat(rectified)) || 1;
+  var n = trendData.length;
+  var style = getComputedStyle(document.documentElement);
+  var green  = style.getPropertyValue('--green').trim()    || '#15803d';
+  var amber  = style.getPropertyValue('--amber').trim()    || '#b45309';
+  var borderC = style.getPropertyValue('--border').trim()  || '#e1e7f0';
+  var inkMuted = style.getPropertyValue('--ink-muted').trim() || '#888';
+
+  function xP(i) { return pad.l + (i / (n - 1 || 1)) * (W - pad.l - pad.r); }
+  function yP(v) { return pad.t + (1 - v / max) * (H - pad.t - pad.b); }
+
+  ctx.strokeStyle = borderC; ctx.lineWidth = 0.5;
+  for (var i = 0; i <= 4; i++) {
+    var yg = pad.t + (H - pad.t - pad.b) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, yg); ctx.lineTo(W - pad.r, yg); ctx.stroke();
+    ctx.fillStyle = inkMuted; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(Math.round(max * (1 - i / 4)), pad.l - 4, yg + 3);
+  }
+
+  function drawLine(vals, color) {
+    if (n < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(xP(0), yP(vals[0]));
+    for (var j = 1; j < n; j++) ctx.lineTo(xP(j), yP(vals[j]));
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.lineJoin = 'round'; ctx.stroke();
+    vals.forEach(function (v, i) {
+      ctx.beginPath(); ctx.arc(xP(i), yP(v), 3, 0, 2 * Math.PI);
+      ctx.fillStyle = color; ctx.fill();
+    });
+  }
+
+  drawLine(confirmed, green);
+  drawLine(rectified, amber);
+
+  trendData.forEach(function (m, i) {
+    ctx.fillStyle = inkMuted; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(MESES[parseInt(m.slice(5), 10) - 1], xP(i), H - 6);
+  });
+})();
+</script>
+<script>
+(function () {
+  var FILAS = {{ actividad_calor | tojson }};
+  var DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  var horas = FILAS.map(function (f) { return f.hora; });
+  var desde = Math.min.apply(null, horas.concat([7]));
+  var hasta = Math.max.apply(null, horas.concat([18]));
+  var tabla = document.getElementById('act-calor');
+
+  function dibujar(rol) {
+    var celdas = {};
+    var total = 0, max = 1;
+    FILAS.forEach(function (f) {
+      if (rol && f.rol !== rol) return;
+      var k = f.dia + '-' + f.hora;
+      celdas[k] = (celdas[k] || 0) + f.total;
+      total += f.total;
+      if (celdas[k] > max) max = celdas[k];
+    });
+    tabla.textContent = '';
+    var cab = tabla.insertRow();
+    cab.appendChild(document.createElement('th'));
+    for (var h = desde; h <= hasta; h++) {
+      var th = document.createElement('th');
+      th.textContent = h + ':00';
+      cab.appendChild(th);
+    }
+    DIAS.forEach(function (d, i) {
+      var fila = tabla.insertRow();
+      var nombre = document.createElement('th');
+      nombre.textContent = d;
+      fila.appendChild(nombre);
+      for (var hr = desde; hr <= hasta; hr++) {
+        var v = celdas[(i + 1) + '-' + hr] || 0;
+        var td = fila.insertCell();
+        td.title = d + ' ' + hr + ':00, ' + v + (v === 1 ? ' evento' : ' eventos');
+        if (v) {
+          var a = 0.2 + 0.8 * (v / max);
+          td.textContent = v;
+          td.style.background = 'rgba(63,81,217,' + a.toFixed(2) + ')';
+          td.style.color = a > 0.55 ? '#fff' : 'var(--ink)';
+        }
+      }
+    });
+    document.getElementById('act-total').textContent = total + (total === 1 ? ' evento.' : ' eventos.');
+  }
+
+  document.querySelectorAll('#act-filtros button').forEach(function (b, _, todos) {
+    b.addEventListener('click', function () {
+      todos.forEach(function (o) {
+        o.classList.toggle('btn-indigo', o === b);
+        o.classList.toggle('btn-outline', o !== b);
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      });
+      dibujar(b.dataset.rol);
+    });
+  });
+  dibujar('');
+})();
+</script>
+{% endblock %}

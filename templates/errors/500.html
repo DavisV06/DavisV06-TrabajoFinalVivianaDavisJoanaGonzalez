@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error interno{% endblock %}
+{% block content %}
+<div style="text-align:center;padding:4rem 2rem;color:var(--ink-muted)">
+  <p style="font-size:4rem;font-weight:900;color:var(--danger)">500</p>
+  <p style="font-size:1.25rem;font-weight:700;margin:.5rem 0">Error interno del servidor</p>
+  <p style="font-size:.9rem">Algo salió mal. El equipo técnico ha sido notificado.</p>
+  <a href="/" class="btn btn-primary mt-6">Volver al inicio</a>
+</div>
+{% endblock %}

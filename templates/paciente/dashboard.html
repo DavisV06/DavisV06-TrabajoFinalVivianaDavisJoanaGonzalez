@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+{# ── Greeting ──────────────────────────────────────────────────────────────── #}
+<div class="page-header">
+  <h1>Bienvenida, {{ current_user.nombre.split()[0] }}</h1>
+  <p class="text-muted text-sm" id="today-label"></p>
+</div>
+
+{# ── Alert: citas sin imágenes ─────────────────────────────────────────────── #}
+{% if n_citas_sin_imagenes > 0 %}
+<div class="notice warn mb-6" style="display:flex;align-items:center;gap:.75rem;justify-content:space-between;flex-wrap:wrap">
+  <span>
+    <strong>Tienes {{ n_citas_sin_imagenes }} cita{% if n_citas_sin_imagenes > 1 %}s{% endif %} sin imágenes.</strong>
+    Súbelas antes de tu consulta para que el médico las revise a tiempo.
+  </span>
+  <a href="{{ url_for('paciente.citas_pendientes') }}" class="btn btn-sm btn-outline" style="flex-shrink:0;border-color:var(--amber);color:var(--amber)">
+    Ir a Citas pendientes
+  </a>
+</div>
+{% endif %}
+
+{# ── Two-column grid: próxima cita + último resultado ─────────────────────── #}
+<div class="grid-65-35 mb-6">
+
+  {# Próxima cita #}
+  <div class="card">
+    <div class="card-body">
+      <p class="card-title">Próxima cita</p>
+      {% if proxima_cita %}
+        <div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap">
+          <div class="dtile" style="flex-shrink:0">
+            <b>{{ proxima_cita.fecha.strftime('%d') }}</b>
+            <span>{{ proxima_cita.fecha.strftime('%b').upper() }}</span>
+          </div>
+          <div style="flex:1;min-width:0">
+            <p style="font-weight:700;font-size:.92rem;margin-bottom:.2rem">
+              {{ proxima_cita.medico_nombre }}
+            </p>
+            <p class="text-sm text-muted">
+              {% if proxima_cita.consulta_padre_id %}Seguimiento{% else %}Consulta{% endif %}
+              {% if proxima_cita.motivo %} &nbsp;·&nbsp; {{ proxima_cita.motivo }}{% endif %}
+            </p>
+            <p class="text-sm text-muted" style="margin-top:.25rem">
+              {{ proxima_cita.fecha.strftime('%d/%m/%Y') }} &nbsp;·&nbsp; {{ proxima_cita.fecha.strftime('%H:%M') }}
+            </p>
+            <span class="badge badge--info" style="margin-top:.6rem">Agendada</span>
+          </div>
+        </div>
+      {% else %}
+        <div style="text-align:center;padding:1.5rem 0;color:var(--ink-muted)">
+          <p class="text-sm">No tienes citas próximas.</p>
+          <a href="{{ url_for('paciente.cita') }}" class="btn btn-indigo btn-sm mt-3">Solicitar cita</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Último resultado #}
+  <div class="card">
+    <div class="card-body">
+      <p class="card-title">Último resultado</p>
+      {% if ultimo_consulta and ultimo_consulta.estudios %}
+        <p style="font-size:.7rem;color:var(--muted);margin-bottom:.75rem">
+          Dr./Dra. {{ ultimo_consulta.medico.usuario.nombre if ultimo_consulta.medico and ultimo_consulta.medico.usuario else '—' }}
+          &nbsp;·&nbsp; {{ ultimo_consulta.fecha.strftime('%d %b %Y') }}
+          {% if ultimo_consulta.consulta_padre_id %}&nbsp;·&nbsp; Seguimiento{% else %}&nbsp;·&nbsp; Consulta inicial{% endif %}
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          {% for e in ultimo_consulta.estudios[:2] %}
+          {% set dx   = e.diagnostico_vigente %}
+          {% set pred = e.prediccion_principal %}
+          <div class="eye" style="overflow:hidden">
+            <div class="eye-h">
+              <span>{{ e.ojo_label }}</span>
+              {% if dx %}
+                <span class="badge badge--{{ dx.clase.value }}" style="font-size:.63rem">{{ dx.clase.label }}</span>
+              {% elif pred %}
+                <span class="badge badge--neutral" style="font-size:.63rem">Pendiente</span>
+              {% endif %}
+            </div>
+            {% if e.imagen %}
+              <img src="{{ url_for('ver_imagen', imagen_id=e.imagen.id) }}"
+                   alt="{{ e.ojo_label }}" loading="lazy"
+                   style="width:100%;height:60px;object-fit:contain;background:#0a0a0a" />
+            {% else %}
+              <div class="retina"></div>
+            {% endif %}
+            {% if pred and pred.probabilidades %}
+              <div class="eye-f">
+                <p style="font-size:.58rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.4rem">
+                  Desglose del modelo predictivo · {{ pred.modelo.nombre if pred.modelo else 'Modelo' }} · {{ "%.1f"|format(pred.confianza * 100) }}%
+                </p>
+                {% for pp in pred.probabilidades %}
+                <div class="ia-row {% if pp.clase == pred.clase %}top{% endif %}" style="margin-bottom:.2rem">
+                  <span style="font-size:.64rem;width:78px;color:var(--ink-2)">{{ pp.clase.label }}</span>
+                  <span class="ia-track"><span class="ia-fill" style="width:{{ "%.0f"|format(pp.porcentaje) }}%"></span></span>
+                  <span style="font-size:.64rem;width:34px;text-align:right;color:var(--muted)">{{ "%.0f"|format(pp.porcentaje) }}%</span>
+                </div>
+                {% endfor %}
+                {% if dx %}
+                  <div class="notice ok mt-2" style="font-size:.68rem;padding:.3rem .5rem">
+                    {% if dx.estado.value == 'rectificado' %}
+                      Rectificado por {{ dx.medico.usuario.nombre if dx.medico and dx.medico.usuario else 'el médico' }}.
+                    {% else %}
+                      Confirmado por {{ dx.medico.usuario.nombre if dx.medico and dx.medico.usuario else 'el médico' }}.
+                      Coincide con la predicción del modelo.
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div class="notice mt-2" style="font-size:.68rem;padding:.3rem .5rem">Pendiente de validación médica.</div>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <a href="{{ url_for('paciente.estudios') }}" class="btn btn-outline btn-sm mt-4">Ver historial completo</a>
+      {% else %}
+        <div style="text-align:center;padding:1.5rem 0;color:var(--ink-muted)">
+          <p class="text-sm">Aún no tienes resultados. Sube tus primeras retinografías.</p>
+          <a href="{{ url_for('paciente.citas_pendientes') }}" class="btn btn-indigo btn-sm mt-3">Citas pendientes</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>{# /grid #}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var locale = 'es-PA';
+  var now    = new Date();
+  var label  = now.toLocaleDateString(locale, { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  var el = document.getElementById('today-label');
+  if (el) el.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+})();
+</script>
+{% endblock %}

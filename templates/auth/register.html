@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Crear cuenta{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card" style="max-width:30rem">
+    <div class="auth-card__logo">
+      <img src="{{ url_for('static', filename='images/jyv-logo.svg') }}"
+           alt="JYV Oftalmología" height="72" style="width:auto;display:block;margin:0 auto" />
+    </div>
+    <h2>Crear cuenta de paciente</h2>
+
+    {% with messages = get_flashed_messages(with_categories=True) %}
+      {% if messages %}
+        <div class="flash-list">
+          {% for cat, msg in messages %}
+            <div class="flash flash--{{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.register') }}" class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      <div class="form-group">
+        <label class="form-label" for="nombre">Nombre completo *</label>
+        <input class="form-control" type="text" id="nombre" name="nombre"
+               placeholder="Juan Pérez" required maxlength="120" autocomplete="name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="email">Correo electrónico *</label>
+        <input class="form-control" type="email" id="email" name="email"
+               placeholder="correo@ejemplo.com" required autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="cedula">Cédula / documento</label>
+        <input class="form-control" type="text" id="cedula" name="cedula"
+               placeholder="8-123-4567" maxlength="30" />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div class="form-group">
+          <label class="form-label" for="fecha_nac">Fecha de nacimiento</label>
+          <input class="form-control" type="date" id="fecha_nac" name="fecha_nac" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="sexo">Sexo biológico</label>
+          <select class="form-control" id="sexo" name="sexo">
+            <option value="">— Sin especificar —</option>
+            <option value="M">Masculino</option>
+            <option value="F">Femenino</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Contraseña * (mín. 8 caracteres)</label>
+        <input class="form-control" type="password" id="password" name="password"
+               required minlength="8" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="confirm">Confirmar contraseña *</label>
+        <input class="form-control" type="password" id="confirm" name="confirm"
+               required minlength="8" autocomplete="new-password" />
+      </div>
+
+      <div class="form-group flex gap-2" style="align-items:flex-start">
+        <input type="checkbox" id="acepto_privacidad" name="acepto_privacidad" value="1" required style="margin-top:.25rem" />
+        <label for="acepto_privacidad" class="text-sm">He leído el
+          <a href="{{ url_for('auth.privacidad') }}" target="_blank" rel="noopener" style="color:var(--indigo);font-weight:600">aviso de privacidad</a>
+          y acepto el tratamiento de mis datos personales, incluidos mis datos de salud. *</label>
+      </div>
+
+      <button type="submit" class="btn btn-indigo w-full btn-lg">Crear cuenta</button>
+    </form>
+
+    <p class="mt-6 text-sm text-muted" style="text-align:center">
+      ¿Ya tienes cuenta?
+      <a href="{{ url_for('auth.login') }}" style="color:var(--indigo);font-weight:600">Inicia sesión</a>
+    </p>
+    <p class="auth-disclaimer">
+      Tus datos se tratan conforme a la Ley 81 de 2019 de protección de datos personales
+      de la República de Panamá.
+    </p>
+  </div>
+</div>
+{% endblock %}

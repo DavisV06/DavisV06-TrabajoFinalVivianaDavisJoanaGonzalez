@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Mis estudios{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Thread wrapper as collapsible ─────────────────────── */
+details.thread-wrap {
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  background: var(--surface-1);
+}
+
+details.thread-wrap > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+details.thread-wrap > summary::-webkit-details-marker { display: none; }
+details.thread-wrap > summary::marker { display: none; }
+
+/* Rotate chevron when open */
+details.thread-wrap[open] .thread-chev { transform: rotate(180deg); }
+.thread-chev { transition: transform .2s ease; flex-shrink: 0; }
+
+/* Thread header (the summary) */
+.thread-header {
+  padding: .8rem 1.25rem;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  border-bottom: 1px solid transparent;
+}
+details.thread-wrap[open] .thread-header { border-bottom-color: var(--border); }
+.thread-header:hover { background: var(--bg); }
+
+/* Row of each consulta within the thread */
+.thread-section {
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+.thread-section:first-of-type { border-top: none; }
+
+/* Left rail (dot + line) */
+.thread-rail {
+  width: 3rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1.25rem;
+  position: relative;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+.thread-rail__dot {
+  width: .7rem; height: .7rem;
+  border-radius: 50%; flex-shrink: 0; z-index: 1;
+  box-shadow: 0 0 0 3px var(--surface-2);
+}
+.thread-rail__dot--root   { background: var(--navy); }
+.thread-rail__dot--follow { background: #6366f1; }
+.thread-rail__line {
+  width: 2px; flex: 1; min-height: .75rem;
+  background: var(--border); margin-top: .35rem;
+}
+
+/* Thread body */
+.thread-body {
+  flex: 1; min-width: 0;
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+  <div>
+    <h1>Mis estudios</h1>
+    <p>Historial clínico de tus retinografías y diagnósticos.</p>
+  </div>
+  <a href="{{ url_for('paciente.descargar_pdf') }}" class="btn btn-outline">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+    </svg>
+    Descargar PDF
+  </a>
+</div>
+
+{% if not threads %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:3rem 2rem;color:var(--ink-muted)">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
+           style="margin:0 auto 1rem;display:block;opacity:.35">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <p style="font-weight:600;margin-bottom:.5rem">Sin estudios registrados</p>
+      <a href="{{ url_for('paciente.citas_pendientes') }}" class="btn btn-indigo mt-4">Ir a Citas pendientes</a>
+    </div>
+  </div>
+{% endif %}
+
+{% for thread in threads %}
+{# thread[0] = newest, thread[-1] = oldest/root #}
+{% set root  = thread[-1] %}
+{% set multi = thread|length > 1 %}
+
+{# Compute summary counts for header display #}
+{% set ns = namespace(n_est=0, n_dx=0) %}
+{% for c in thread %}
+  {% set ns.n_est = ns.n_est + c.estudios|length %}
+  {% set ns.n_dx  = ns.n_dx  + (c.estudios|selectattr('diagnostico_vigente')|list|length) %}
+{% endfor %}
+
+<details class="thread-wrap">
+  <summary class="thread-header">
+    <div style="min-width:0">
+      <p style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:.15rem">
+        {% if multi %}Seguimiento · {{ thread|length }} consultas{% else %}Consulta{% endif %}
+      </p>
+      <p style="font-weight:700;font-size:.95rem;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        Dr./Dra. {{ root.medico.usuario.nombre if root.medico and root.medico.usuario else '—' }}
+      </p>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:.75rem;flex-shrink:0">
+      {% if ns.n_est > 0 %}
+        <span class="badge badge--{{ 'success' if ns.n_dx == ns.n_est else ('info' if ns.n_dx > 0 else 'warning') }}"
+              style="font-size:.68rem;white-space:nowrap">
+          {{ ns.n_dx }}/{{ ns.n_est }} diagnóstico{{ 's' if ns.n_est > 1 }}
+        </span>
+      {% endif %}
+      <span style="font-size:.8rem;color:var(--ink-muted);white-space:nowrap">
+        {{ root.fecha.strftime('%d/%m/%Y') }}
+        {% if multi %} → {{ thread[0].fecha.strftime('%d/%m/%Y') }}{% endif %}
+      </span>
+      <svg class="thread-chev" viewBox="0 0 24 24" width="16" height="16" fill="none"
+           stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+  </summary>
+
+  {# ── Consultas en el hilo (más reciente primero) ───────────────────────── #}
+  {% for c in thread %}
+  <div class="thread-section">
+
+    {# Carril #}
+    <div class="thread-rail">
+      <div class="thread-rail__dot {{ 'thread-rail__dot--root' if not c.consulta_padre_id else 'thread-rail__dot--follow' }}"></div>
+      {% if not loop.last %}
+        <div class="thread-rail__line"></div>
+      {% endif %}
+    </div>
+
+    {# Cuerpo #}
+    <div class="thread-body">
+
+      {# Etiqueta + fecha + badge #}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap">
+        <div>
+          <span style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)">
+            {% if not c.consulta_padre_id %}
+              {% if multi %}Consulta inicial{% else %}Consulta{% endif %}
+            {% else %}
+              Seguimiento {{ loop.revindex - 1 }}
+            {% endif %}
+          </span>
+          <span style="font-size:.75rem;color:var(--ink-muted)"> · {{ c.fecha.strftime('%d/%m/%Y') }}</span>
+          {% if c.motivo %}
+            <p class="text-sm text-muted" style="margin:.2rem 0 0">{{ c.motivo }}</p>
+          {% endif %}
+        </div>
+        {% set n_dx_c  = c.estudios|selectattr('diagnostico_vigente')|list|length %}
+        {% set n_est_c = c.estudios|length %}
+        {% if n_est_c > 0 or c.solicitar_retinografia %}
+          <span class="badge badge--{{ 'success' if n_dx_c > 0 and n_dx_c == n_est_c else ('info' if n_dx_c > 0 else 'warning') }}"
+                style="white-space:nowrap;flex-shrink:0">
+            {{ n_dx_c }}/{{ n_est_c }} dx
+          </span>
+        {% endif %}
+      </div>
+
+      {# Estudios #}
+      {% if c.estudios %}
+        <div class="dx-grid">
+          {% for e in c.estudios %}
+          <div class="eye-card">
+            <div class="eye-card__header">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              </svg>
+              {{ e.ojo_label }}
+              {% set dx = e.diagnostico_vigente %}
+              {% if dx %}
+                <span class="badge badge--{{ dx.clase.value }}" style="margin-left:auto;font-size:.7rem">{{ dx.clase.label }}</span>
+              {% else %}
+                <span class="badge badge--warning" style="margin-left:auto;font-size:.7rem">Pendiente</span>
+              {% endif %}
+            </div>
+            {% if e.imagen %}
+              <img class="eye-card__img"
+                   src="{{ url_for('ver_imagen', imagen_id=e.imagen.id) }}"
+                   alt="Retinografía {{ e.ojo_label }}" loading="lazy" />
+            {% endif %}
+            <div class="eye-card__body">
+              {% set pred = e.prediccion_principal %}
+              {% if pred %}
+                <p style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.4rem">
+                  Desglose del modelo predictivo · {{ pred.modelo.nombre if pred.modelo else 'Modelo' }} · {{ "%.1f"|format(pred.confianza * 100) }}%
+                </p>
+                {% if pred.probabilidades %}
+                <table class="prob-table">
+                  {% for pp in pred.probabilidades %}
+                  <tr>
+                    <td>{{ pp.clase.label }}</td>
+                    <td><div class="prob-bar-wrap"><div class="prob-bar prob-bar--{{ pp.clase.value }}" data-value="{{ pp.valor }}"></div></div></td>
+                    <td>{{ "%.1f"|format(pp.porcentaje) }}%</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% endif %}
+              {% endif %}
+
+              {% if dx %}
+                <hr style="border:none;border-top:1px solid var(--border);margin:.85rem 0" />
+                <p style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.4rem">Diagnóstico médico</p>
+                <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem">
+                  <span class="badge badge--{{ dx.clase.value }}">{{ dx.clase.label }}</span>
+                  <span class="badge badge--{{ dx.estado_badge }}">{{ dx.estado.value|title }}</span>
+                </div>
+                {% if dx.estado.value == 'confirmado' %}
+                  <div class="notice ok" style="font-size:.72rem;padding:.35rem .6rem;margin-top:.35rem">
+                    Confirmado por {{ dx.medico.usuario.nombre if dx.medico and dx.medico.usuario else 'el médico' }}.
+                    Coincide con la predicción del modelo.
+                  </div>
+                {% elif dx.estado.value == 'rectificado' %}
+                  <div class="notice warn" style="font-size:.72rem;padding:.35rem .6rem;margin-top:.35rem">
+                    Rectificado por {{ dx.medico.usuario.nombre if dx.medico and dx.medico.usuario else 'el médico' }}.
+                    {% if dx.observaciones %}<br>{{ dx.observaciones }}{% endif %}
+                  </div>
+                {% endif %}
+              {% elif pred %}
+                <hr style="border:none;border-top:1px solid var(--border);margin:.85rem 0" />
+                <p class="text-sm text-muted">Pendiente de revisión médica.</p>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+      {% elif c.solicitar_retinografia %}
+        <div style="padding:1rem 1.25rem;border:1px dashed var(--border);border-radius:.5rem;
+                    color:var(--ink-muted);font-size:.875rem;display:flex;align-items:center;
+                    gap:.75rem;flex-wrap:wrap">
+          <span>
+            {% if c.consulta_padre_id %}Aún no hay imágenes para este seguimiento.
+            {% else %}Esta consulta aún no tiene imágenes.{% endif %}
+          </span>
+          <a href="{{ url_for('paciente.citas_pendientes') }}" class="btn btn-indigo btn-sm" style="flex-shrink:0">
+            Subir imágenes
+          </a>
+        </div>
+      {% endif %}
+
+      {# Notas / plan del médico #}
+      {% if c.notas_medico or c.plan_tratamiento %}
+        <div style="margin-top:1rem;display:grid;grid-template-columns:{{ '1fr 1fr' if c.notas_medico and c.plan_tratamiento else '1fr' }};gap:.75rem">
+          {% if c.notas_medico %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Notas clínicas</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.65rem .9rem;font-size:.82rem;white-space:pre-wrap;line-height:1.55">{{ c.notas_medico }}</div>
+          </div>
+          {% endif %}
+          {% if c.plan_tratamiento %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Plan de tratamiento</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.65rem .9rem;font-size:.82rem;white-space:pre-wrap;line-height:1.55">{{ c.plan_tratamiento }}</div>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}
+
+</details>
+{% endfor %}
+{% endblock %}

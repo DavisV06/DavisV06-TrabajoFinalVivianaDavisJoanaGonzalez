@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Mis datos{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Mis datos</h1>
+  <p>Consulta y corrige tus datos personales. Tus derechos se explican en el
+    <a href="{{ url_for('auth.privacidad') }}" style="color:var(--indigo);font-weight:600">aviso de privacidad</a>.</p>
+</div>
+
+<div class="card card-p" style="max-width:44rem">
+  <form method="POST" action="{{ url_for('auth.perfil') }}" class="no-double-submit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+    <div class="form-group">
+      <label class="form-label" for="nombre">Nombre completo *</label>
+      <input class="form-control" type="text" id="nombre" name="nombre" required maxlength="120"
+             value="{{ current_user.nombre }}" autocomplete="name" />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="email">Correo electrónico</label>
+      <input class="form-control" type="email" id="email" value="{{ current_user.email }}" disabled />
+      <p class="text-xs text-muted" style="margin-top:.3rem">Es tu usuario para iniciar sesión y no se puede
+        cambiar desde esta pantalla.</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="telefono">Teléfono</label>
+      <input class="form-control" type="tel" id="telefono" name="telefono" maxlength="30"
+             value="{{ current_user.telefono or '' }}" autocomplete="tel" />
+    </div>
+
+    {% if pac %}
+    <div class="form-group">
+      <label class="form-label" for="cedula">Cédula / documento</label>
+      <input class="form-control" type="text" id="cedula" name="cedula" maxlength="30"
+             value="{{ pac.cedula or '' }}" />
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div class="form-group">
+        <label class="form-label" for="fecha_nac">Fecha de nacimiento</label>
+        <input class="form-control" type="date" id="fecha_nac" name="fecha_nac"
+               value="{{ pac.fecha_nac.isoformat() if pac.fecha_nac else '' }}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="sexo">Sexo biológico</label>
+        <select class="form-control" id="sexo" name="sexo">
+          <option value="" {% if not pac.sexo %}selected{% endif %}>— Sin especificar —</option>
+          <option value="M" {% if pac.sexo == 'M' %}selected{% endif %}>Masculino</option>
+          <option value="F" {% if pac.sexo == 'F' %}selected{% endif %}>Femenino</option>
+        </select>
+      </div>
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-indigo">Guardar cambios</button>
+  </form>
+</div>
+
+<div class="card card-p" style="max-width:44rem;margin-top:1.25rem">
+  <p class="card-title">Consentimiento</p>
+  {% if current_user.consentimiento_en %}
+    <p class="text-sm">Aceptaste el aviso de privacidad (versión {{ current_user.consentimiento_version }})
+      el {{ current_user.consentimiento_en.strftime('%d/%m/%Y a las %H:%M') }} (UTC).</p>
+  {% endif %}
+</div>
+
+{% if pac %}
+<div class="card card-p" style="max-width:44rem;margin-top:1.25rem">
+  <p class="card-title">Acceso a tu información clínica</p>
+  <p class="text-sm">Tus estudios, resultados y diagnósticos están en «Mis estudios». También puedes
+    descargar tu expediente completo.</p>
+  <div class="flex gap-3" style="flex-wrap:wrap;margin-top:.75rem">
+    <a href="{{ url_for('paciente.estudios') }}" class="btn btn-outline btn-sm">Ver mis estudios</a>
+    <a href="{{ url_for('paciente.descargar_pdf') }}" class="btn btn-outline btn-sm">Descargar expediente (PDF)</a>
+  </div>
+</div>
+
+<div class="card card-p" style="max-width:44rem;margin-top:1.25rem">
+  <p class="card-title">Cancelación de tus datos personales</p>
+  {% if pac.cancelacion_solicitada_en %}
+    <div class="notice warn">Solicitaste la cancelación el
+      {{ pac.cancelacion_solicitada_en.strftime('%d/%m/%Y') }}. Un administrador la está tramitando.</div>
+  {% else %}
+    <p class="text-sm">Puedes pedir que se eliminen tus datos de identificación y contacto. Tu historial
+      clínico se conservará, pero sin datos que te identifiquen, y ya no podrás iniciar sesión.</p>
+    <form method="POST" action="{{ url_for('auth.solicitar_cancelacion') }}" style="margin-top:.75rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <button type="submit" class="btn btn-outline btn-sm"
+              onclick="return confirm('¿Solicitar la cancelación de tus datos personales? Esta acción no se puede deshacer una vez que el administrador la tramite.')">
+        Solicitar cancelación
+      </button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

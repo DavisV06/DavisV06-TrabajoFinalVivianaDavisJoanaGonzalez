@@ -1,0 +1,526 @@
+{% extends "base.html" %}
+{% block title %}Consulta — {{ consulta.paciente.usuario.nombre }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Thread / hilo clínico ──────────────────────────────── */
+.thread-wrap {
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+.thread-section {
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+.thread-section:first-child { border-top: none; }
+.thread-rail {
+  width: 3rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1.25rem;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+.thread-rail__dot {
+  width: .7rem;
+  height: .7rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  z-index: 1;
+  box-shadow: 0 0 0 3px var(--surface-2);
+}
+.thread-rail__dot--root   { background: var(--color-navy, #1e3a5f); }
+.thread-rail__dot--follow { background: #6366f1; }
+.thread-rail__line {
+  width: 2px;
+  flex: 1;
+  min-height: .75rem;
+  background: var(--border);
+  margin-top: .35rem;
+}
+.thread-body {
+  flex: 1;
+  min-width: 0;
+  padding: 1.1rem 1.25rem 1.5rem;
+}
+.thread-header {
+  padding: .75rem 1.25rem;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{# ── Cabecera de página ─────────────────────────────────────────────────── #}
+<div class="page-header">
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('medico.dashboard') }}" class="btn btn-ghost btn-sm">← Volver</a>
+    <div>
+      <h1>{{ consulta.paciente.usuario.nombre }}</h1>
+      <p>
+        {% if consulta.consulta_padre_id %}
+          <span style="color:#6366f1;font-weight:600">Seguimiento</span> ·
+        {% endif %}
+        Consulta del {{ consulta.fecha.strftime('%d/%m/%Y') }}
+        {% if consulta.motivo %} · {{ consulta.motivo }}{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="flex gap-2">
+    {% if consulta.estado.value != 'atendida' %}
+    <form method="POST"
+          action="{{ url_for('medico.marcar_atendida', cid=consulta.id) }}"
+          onsubmit="return confirm('¿Marcar esta consulta como atendida?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <button type="submit" class="btn btn-outline btn-sm" style="border-color:#16a34a;color:#16a34a">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Marcar como atendida
+      </button>
+    </form>
+    {% endif %}
+    <button class="btn btn-outline btn-sm"
+            onclick="document.getElementById('modal-seguimiento').classList.add('open')">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Agendar seguimiento
+    </button>
+  </div>
+</div>
+
+{# ── Aviso de cita referida ─────────────────────────────────────────────── #}
+{% if origen_ref %}
+<div class="notice info" style="margin-bottom:1.25rem">
+  <strong>Cita referida</strong> por
+  {{ origen_ref.medico.usuario.nombre if origen_ref.medico and origen_ref.medico.usuario else 'otro médico' }}.
+  {% if consulta.notas %}<br />Notas de la referencia: {{ consulta.notas }}{% endif %}
+  <br /><span class="text-xs">El historial completo del paciente aparece al final de esta página.</span>
+</div>
+{% endif %}
+
+{# ── Hilo clínico ───────────────────────────────────────────────────────── #}
+<div class="thread-wrap">
+
+  {# Cabecera del hilo #}
+  <div class="thread-header">
+    <div>
+      <p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:.15rem">
+        {% if historial %}Seguimiento clínico · {{ historial|length + 1 }} consultas{% else %}Consulta clínica{% endif %}
+      </p>
+      <p style="font-weight:700;font-size:.95rem;margin:0">
+        {{ consulta.paciente.usuario.nombre }}
+      </p>
+    </div>
+    <span style="font-size:.8rem;color:var(--ink-muted);white-space:nowrap">
+      {% if historial %}
+        {{ historial[-1].fecha.strftime('%d/%m/%Y') }} → {{ consulta.fecha.strftime('%d/%m/%Y') }}
+      {% else %}
+        {{ consulta.fecha.strftime('%d/%m/%Y') }}
+      {% endif %}
+    </span>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     Nodo 1: Consulta actual (ARRIBA — más reciente)
+  ══════════════════════════════════════════════════════════════════════ #}
+  <div class="thread-section">
+    <div class="thread-rail">
+      <div class="thread-rail__dot {{ 'thread-rail__dot--follow' if consulta.consulta_padre_id else 'thread-rail__dot--root' }}"></div>
+      {% if historial %}<div class="thread-rail__line"></div>{% endif %}
+    </div>
+    <div class="thread-body">
+
+      {# Etiqueta + estado #}
+      <div class="flex justify-between items-center" style="margin-bottom:1rem">
+        <div>
+          <span style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)">
+            {% if consulta.consulta_padre_id %}Seguimiento {{ historial|length }}{% else %}Consulta{% endif %}
+          </span>
+          <span style="font-size:.75rem;color:var(--ink-muted)"> · {{ consulta.fecha.strftime('%d/%m/%Y') }}</span>
+          {% if consulta.motivo %}<p class="text-sm text-muted" style="margin:.2rem 0 0">{{ consulta.motivo }}</p>{% endif %}
+        </div>
+        <span class="badge badge--{{ 'success' if consulta.estado.value == 'atendida' else 'info' }}">
+          {{ consulta.estado.label }}
+        </span>
+      </div>
+
+      {# ── Toggle solicitud de retinografía (solo en seguimientos) ──── #}
+      {% if consulta.consulta_padre_id %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.65rem 1rem;border-radius:.5rem;margin-bottom:1rem;
+                  background:{{ 'rgba(22,163,74,.08)' if consulta.solicitar_retinografia else 'var(--surface-2)' }};
+                  border:1px solid {{ '#16a34a55' if consulta.solicitar_retinografia else 'var(--border)' }}">
+        <div style="display:flex;align-items:center;gap:.6rem;font-size:.875rem">
+          {% if consulta.solicitar_retinografia %}
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <span style="color:#16a34a;font-weight:600">Retinografía solicitada al paciente</span>
+          {% else %}
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ink-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span style="color:var(--ink-muted)">No se ha solicitado retinografía para esta cita</span>
+          {% endif %}
+        </div>
+        <form method="POST" action="{{ url_for('medico.toggle_retinografia', cid=consulta.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-sm {{ 'btn-outline' if consulta.solicitar_retinografia else 'btn-navy' }}"
+                  style="{{ 'border-color:#16a34a;color:#16a34a' if consulta.solicitar_retinografia else '' }}">
+            {% if consulta.solicitar_retinografia %}Cancelar solicitud{% else %}Solicitar retinografía{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+
+      {# ── Estudios actuales ──────────────────────────────────────────── #}
+      {% if not consulta.estudios %}
+        <div style="text-align:center;padding:2rem;color:var(--ink-muted);background:var(--surface-2);border:1px dashed var(--border);border-radius:.5rem;margin-bottom:1.25rem">
+          <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto .75rem;display:block;opacity:.4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <p style="font-weight:600;margin-bottom:.3rem">
+            {% if consulta.solicitar_retinografia %}Esperando imágenes del seguimiento{% else %}Sin imágenes para esta cita{% endif %}
+          </p>
+          <p class="text-sm" style="color:var(--ink-muted)">
+            {% if consulta.solicitar_retinografia %}El paciente debe subir las retinografías desde su portal.
+            {% else %}El paciente verá la solicitud cuando actives el botón de arriba.{% endif %}
+          </p>
+        </div>
+      {% else %}
+        <div class="dx-grid" style="margin-bottom:1.25rem">
+          {% for e in consulta.estudios %}
+          {% set prev_e  = prev_estudios_map.get(e.ojo) if prev_estudios_map else none %}
+          {% set prev_dx = prev_e.diagnostico_vigente if prev_e else none %}
+          {% set dx      = e.diagnostico_vigente %}
+          <div class="card">
+            {# Cabecera del ojo #}
+            <div class="eye-card__header" style="padding:.75rem 1rem;background:var(--surface-2);border-bottom:1px solid var(--border);font-weight:700;font-size:.875rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>
+              {{ e.ojo_label }}
+              {% if prev_dx %}
+                <span class="badge badge--{{ prev_dx.clase.value }}" style="opacity:.6;font-size:.7rem" title="Diagnóstico anterior">↩ {{ prev_dx.clase.label }}</span>
+              {% endif %}
+              <span style="margin-left:auto;display:flex;gap:.35rem">
+                {% if dx %}
+                  <span class="badge badge--{{ dx.clase.value }}">{{ dx.clase.label }}</span>
+                  <span class="badge badge--{{ dx.estado_badge }}">{{ dx.estado.value }}</span>
+                {% else %}
+                  <span class="badge badge--warning">Pendiente</span>
+                {% endif %}
+              </span>
+            </div>
+            {# Imágenes: comparación o simple #}
+            {% if prev_e and prev_e.imagen and e.imagen %}
+              <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
+                <div style="border-right:1px solid var(--border)">
+                  <p style="text-align:center;font-size:.68rem;font-weight:700;color:var(--ink-muted);padding:.3rem;text-transform:uppercase;letter-spacing:.05em;background:var(--surface-2)">
+                    Anterior · {{ consulta_padre.fecha.strftime('%d/%m/%Y') }}
+                  </p>
+                  <img style="width:100%;max-height:150px;object-fit:contain;background:#000;opacity:.75"
+                       src="{{ url_for('ver_imagen', imagen_id=prev_e.imagen.id) }}" loading="lazy" />
+                </div>
+                <div>
+                  <p style="text-align:center;font-size:.68rem;font-weight:700;color:var(--ink-muted);padding:.3rem;text-transform:uppercase;letter-spacing:.05em;background:var(--surface-2)">
+                    Actual · {{ consulta.fecha.strftime('%d/%m/%Y') }}
+                  </p>
+                  <img style="width:100%;max-height:150px;object-fit:contain;background:#000"
+                       src="{{ url_for('ver_imagen', imagen_id=e.imagen.id) }}" loading="lazy" />
+                </div>
+              </div>
+            {% elif e.imagen %}
+              <img style="width:100%;max-height:200px;object-fit:contain;background:#000"
+                   src="{{ url_for('ver_imagen', imagen_id=e.imagen.id) }}" loading="lazy" />
+            {% endif %}
+            {# IA + acciones #}
+            <div style="padding:1rem">
+              {% set pred = e.prediccion_principal %}
+              {% if pred %}
+                <p class="text-xs text-muted font-bold" style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Modelo predictivo — {{ pred.modelo.nombre if pred.modelo else 'Modelo' }}</p>
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="badge badge--{{ pred.clase.value }}">{{ pred.clase.label }}</span>
+                  <span class="text-xs text-muted">{{ "%.1f"|format(pred.confianza * 100) }}%</span>
+                </div>
+              {% endif %}
+              <a href="{{ url_for('medico.diagnostico', estudio_id=e.id) }}"
+                 class="btn btn-navy btn-sm w-full" style="justify-content:center">
+                {% if dx %}Ver / Rectificar diagnóstico{% else %}Emitir diagnóstico{% endif %}
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {# ── Notas clínicas y plan de tratamiento (editable) ───────────── #}
+      <div style="border-top:1px solid var(--border);padding-top:1.25rem">
+        <p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:.9rem">
+          Notas clínicas y tratamiento
+        </p>
+        <form method="POST" action="{{ url_for('medico.guardar_notas', cid=consulta.id) }}"
+              class="no-double-submit">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label class="form-label" for="notas-medico">
+                Notas clínicas
+                <span class="text-xs text-muted" style="font-weight:400"> — hallazgos, evolución</span>
+              </label>
+              <textarea class="form-control" id="notas-medico" name="notas_medico"
+                        rows="5" maxlength="2000"
+                        placeholder="Hallazgos clínicos, antecedentes, evolución…">{{ consulta.notas_medico or '' }}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="plan-tratamiento">
+                Plan de tratamiento
+                <span class="text-xs text-muted" style="font-weight:400"> — indicaciones, próximos pasos</span>
+              </label>
+              <textarea class="form-control" id="plan-tratamiento" name="plan_tratamiento"
+                        rows="5" maxlength="2000"
+                        placeholder="Indicaciones, medicamentos, nueva cita…">{{ consulta.plan_tratamiento or '' }}</textarea>
+            </div>
+          </div>
+          <div class="flex items-center gap-3" style="margin-top:.9rem">
+            <button type="submit" class="btn btn-navy">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Guardar
+            </button>
+            {% if consulta.modificada_en %}
+              <span class="text-xs text-muted">Guardado el {{ consulta.modificada_en.strftime('%d/%m/%Y a las %H:%M') }}</span>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>{# /Nodo 1 #}
+
+  {# ══════════════════════════════════════════════════════════════════════
+     Nodos de historial: todos los ancestros (más reciente primero)
+  ══════════════════════════════════════════════════════════════════════ #}
+  {% for anc in historial %}
+  <div class="thread-section">
+    <div class="thread-rail">
+      <div class="thread-rail__dot {{ 'thread-rail__dot--follow' if anc.consulta_padre_id else 'thread-rail__dot--root' }}"></div>
+      {% if not loop.last %}<div class="thread-rail__line"></div>{% endif %}
+    </div>
+    <div class="thread-body">
+
+      {# Etiqueta + estado #}
+      <div class="flex justify-between items-center" style="margin-bottom:1rem">
+        <div>
+          <span style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)">
+            {% if not anc.consulta_padre_id %}Consulta inicial
+            {% else %}Seguimiento {{ loop.revindex - 1 }}
+            {% endif %}
+          </span>
+          <span style="font-size:.75rem;color:var(--ink-muted)"> · {{ anc.fecha.strftime('%d/%m/%Y') }}</span>
+          {% if anc.motivo %}<p class="text-sm text-muted" style="margin:.2rem 0 0">{{ anc.motivo }}</p>{% endif %}
+        </div>
+        <span class="badge badge--{{ 'success' if anc.estado.value == 'atendida' else 'info' }}">
+          {{ anc.estado.label }}
+        </span>
+      </div>
+
+      {# Estudios (solo lectura) #}
+      {% if anc.estudios %}
+        <div class="dx-grid" style="margin-bottom:1.25rem">
+          {% for e_prev in anc.estudios %}
+          {% set dx_prev = e_prev.diagnostico_vigente %}
+          <div class="card" style="border:1px solid var(--border)">
+            <div class="eye-card__header" style="padding:.6rem 1rem;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:.5rem">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>
+              {{ e_prev.ojo_label }}
+              {% if dx_prev %}
+                <span class="badge badge--{{ dx_prev.clase.value }}" style="margin-left:auto;font-size:.7rem">{{ dx_prev.clase.label }}</span>
+                <span class="badge badge--{{ dx_prev.estado_badge }}" style="font-size:.7rem">{{ dx_prev.estado.value }}</span>
+              {% else %}
+                <span class="badge badge--warning" style="margin-left:auto;font-size:.7rem">Sin diagnóstico</span>
+              {% endif %}
+            </div>
+            {% if e_prev.imagen %}
+              <img style="width:100%;max-height:160px;object-fit:contain;background:#000;opacity:.8"
+                   src="{{ url_for('ver_imagen', imagen_id=e_prev.imagen.id) }}" loading="lazy" />
+            {% endif %}
+            {% if dx_prev and dx_prev.observaciones %}
+              <p class="text-xs text-muted" style="padding:.5rem 1rem">{{ dx_prev.observaciones }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-muted" style="margin-bottom:1rem">Esta consulta no tiene imágenes registradas.</p>
+      {% endif %}
+
+      {# Notas y tratamiento (solo lectura) #}
+      {% if anc.notas_medico or anc.plan_tratamiento %}
+        <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:{{ '1fr 1fr' if anc.notas_medico and anc.plan_tratamiento else '1fr' }};gap:1rem">
+          {% if anc.notas_medico %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Notas clínicas</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.7rem 1rem;font-size:.85rem;white-space:pre-wrap;line-height:1.55">{{ anc.notas_medico }}</div>
+          </div>
+          {% endif %}
+          {% if anc.plan_tratamiento %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Plan de tratamiento</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.7rem 1rem;font-size:.85rem;white-space:pre-wrap;line-height:1.55">{{ anc.plan_tratamiento }}</div>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}{# /historial #}
+
+</div>{# /thread-wrap #}
+
+
+{# ══════════════════════════════════════════════════════════════════════════
+   Historial del paciente fuera de este hilo (otros médicos y otras consultas).
+   Solo lectura: el diagnóstico de esos estudios corresponde a su médico.
+══════════════════════════════════════════════════════════════════════════ #}
+{% if otras_consultas %}
+<div style="margin-top:1.75rem">
+  <h2 style="font-size:1.05rem;font-weight:700;margin-bottom:.25rem">Historial del paciente</h2>
+  <p class="text-sm text-muted" style="margin-bottom:1rem">
+    Otras consultas registradas, incluidas las atendidas por otros médicos. Solo lectura.
+  </p>
+  <div class="thread-wrap">
+  {% for oc in otras_consultas %}
+  <div class="thread-section">
+    <div class="thread-rail">
+      <div class="thread-rail__dot thread-rail__dot--root"></div>
+      {% if not loop.last %}<div class="thread-rail__line"></div>{% endif %}
+    </div>
+    <div class="thread-body">
+      <div class="flex justify-between items-center" style="margin-bottom:1rem;gap:.75rem;flex-wrap:wrap">
+        <div>
+          <span style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)">
+            {{ oc.fecha.strftime('%d/%m/%Y') }}
+          </span>
+          <span style="font-size:.75rem;color:var(--ink-muted)"> ·
+            {{ oc.medico.usuario.nombre if oc.medico and oc.medico.usuario else 'Médico' }}
+            {% if oc.medico and oc.medico.especialidad %}({{ oc.medico.especialidad }}){% endif %}
+          </span>
+          {% if oc.motivo %}<p class="text-sm text-muted" style="margin:.2rem 0 0">{{ oc.motivo }}</p>{% endif %}
+          {% if oc.estado.value == 'referida' and oc.medico_ref and oc.medico_ref.usuario %}
+            <p class="text-xs text-muted" style="margin:.2rem 0 0">Referida a {{ oc.medico_ref.usuario.nombre }}</p>
+          {% endif %}
+        </div>
+        <span class="badge badge--{{ 'success' if oc.estado.value == 'atendida' else 'info' }}">{{ oc.estado.label }}</span>
+      </div>
+
+      {% if oc.estudios %}
+        <div class="dx-grid" style="margin-bottom:1.25rem">
+          {% for eo in oc.estudios %}
+          {% set dxo = eo.diagnostico_vigente %}
+          {% set pro = eo.prediccion_principal %}
+          <div class="card" style="border:1px solid var(--border)">
+            <div class="eye-card__header" style="padding:.6rem 1rem;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+              {{ eo.ojo_label }}
+              {% if dxo %}
+                <span class="badge badge--{{ dxo.clase.value }}" style="margin-left:auto;font-size:.7rem">{{ dxo.clase.label }}</span>
+                <span class="badge badge--{{ dxo.estado_badge }}" style="font-size:.7rem">{{ dxo.estado.value }}</span>
+              {% else %}
+                <span class="badge badge--warning" style="margin-left:auto;font-size:.7rem">Sin diagnóstico</span>
+              {% endif %}
+            </div>
+            {% if eo.imagen %}
+              <img style="width:100%;max-height:160px;object-fit:contain;background:#000;opacity:.85"
+                   src="{{ url_for('ver_imagen', imagen_id=eo.imagen.id) }}" loading="lazy"
+                   alt="Retinografía {{ eo.ojo_label }} del {{ oc.fecha.strftime('%d/%m/%Y') }}" />
+            {% endif %}
+            <div style="padding:.6rem 1rem;font-size:.78rem">
+              {% if pro %}
+                <p class="text-muted" style="margin-bottom:.25rem">Modelo predictivo: <strong>{{ pro.clase.label }}</strong> ({{ "%.1f"|format(pro.confianza * 100) }}%)</p>
+              {% endif %}
+              {% if dxo and dxo.medico and dxo.medico.usuario %}
+                <p class="text-muted" style="margin-bottom:.25rem">Diagnóstico de {{ dxo.medico.usuario.nombre }}</p>
+              {% endif %}
+              {% if dxo and dxo.observaciones %}<p class="text-muted">{{ dxo.observaciones }}</p>{% endif %}
+              {% if oc.estado.value == 'referida' and oc.referida_a == current_user.id %}
+                <a href="{{ url_for('medico.diagnostico', estudio_id=eo.id) }}"
+                   class="btn btn-outline btn-sm w-full" style="margin-top:.6rem">
+                  {% if dxo %}Revisar / Rectificar diagnóstico{% else %}Emitir diagnóstico{% endif %}
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-muted" style="margin-bottom:1rem">Esta consulta no tiene imágenes registradas.</p>
+      {% endif %}
+
+      {% if oc.notas_medico or oc.plan_tratamiento %}
+        <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:{{ '1fr 1fr' if oc.notas_medico and oc.plan_tratamiento else '1fr' }};gap:1rem">
+          {% if oc.notas_medico %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Notas clínicas</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.7rem 1rem;font-size:.85rem;white-space:pre-wrap;line-height:1.55">{{ oc.notas_medico }}</div>
+          </div>
+          {% endif %}
+          {% if oc.plan_tratamiento %}
+          <div>
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:.35rem">Plan de tratamiento</p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:.4rem;padding:.7rem 1rem;font-size:.85rem;white-space:pre-wrap;line-height:1.55">{{ oc.plan_tratamiento }}</div>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+
+{# ══════════════════════════════════════════════════════════════════════════
+   Modal: Agendar seguimiento
+══════════════════════════════════════════════════════════════════════════ #}
+<div class="modal-overlay" id="modal-seguimiento" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal__header">
+      <p class="modal__title">Agendar cita de seguimiento</p>
+      <button class="btn btn-ghost btn-sm"
+              onclick="document.getElementById('modal-seguimiento').classList.remove('open')"
+              aria-label="Cerrar">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('medico.agendar_seguimiento', cid=consulta.id) }}"
+          class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="modal__body">
+        <div class="form-group">
+          <label class="form-label" for="seg-fecha">Fecha *</label>
+          <input class="form-control" type="date" id="seg-fecha" name="fecha"
+                 min="{{ hoy }}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="seg-hora">Hora *</label>
+          <select class="form-control" id="seg-hora" name="hora" required>
+            {% for h in range(8, 17) %}
+              <option value="{{ '%02d'|format(h) }}:00">{{ '%02d'|format(h) }}:00</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="seg-motivo">Motivo</label>
+          <input class="form-control" type="text" id="seg-motivo" name="motivo"
+                 value="Seguimiento — {{ consulta.motivo or 'consulta #' ~ consulta.id }}"
+                 maxlength="500" />
+        </div>
+        <p class="form-text">Se notificará al paciente automáticamente.</p>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('modal-seguimiento').classList.remove('open')">
+          Cancelar
+        </button>
+        <button type="submit" class="btn btn-navy">Confirmar cita</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

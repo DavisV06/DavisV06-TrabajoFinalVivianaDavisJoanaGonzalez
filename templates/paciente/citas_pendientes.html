@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Citas pendientes{% endblock %}
+
+{# ── Macro: dropzone ──────────────────────────────────────────────────────── #}
+{% macro dz(field, text) %}
+<label>
+  <p style="font-size:.68rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">{{ text }}</p>
+  <div class="dropzone">
+    <input type="file" name="{{ field }}" accept=".png,.jpg,.jpeg,.bmp" />
+    <img class="dz-img" src="" alt="" style="display:none;width:100%;height:112px;object-fit:cover;border-radius:calc(var(--r-lg) - 2px)" />
+    <span class="dz-name" style="display:none;position:absolute;left:0;right:0;bottom:0;background:rgba(15,27,45,.72);color:#fff;font-size:.68rem;padding:.25rem .5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <div class="dz-placeholder" style="display:flex;flex-direction:column;align-items:center;gap:.4rem;padding:1.25rem .75rem">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--muted)" stroke-width="1.5">
+        <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+      </svg>
+      <span style="font-size:.72rem;color:var(--muted)">Arrastra o haz clic</span>
+      <span style="font-size:.65rem;color:var(--muted-2)">PNG, JPG, BMP</span>
+    </div>
+  </div>
+</label>
+{% endmacro %}
+
+{% block extra_head %}
+<style>
+.dz-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 480px) { .dz-pair { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+  <div>
+    <h1>Citas pendientes</h1>
+    <p>Citas que aún no se han atendido. Sube tus retinografías antes de la consulta.</p>
+  </div>
+  <a href="{{ url_for('paciente.cita') }}" class="btn btn-indigo btn-sm">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Nueva cita
+  </a>
+</div>
+
+{% if not citas %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:3rem 2rem;color:var(--ink-muted)">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
+           style="margin:0 auto 1rem;display:block;opacity:.4">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      <p style="font-weight:700;font-size:1rem;margin-bottom:.4rem">No tienes citas pendientes</p>
+      <p class="text-sm text-muted">Solicita una cita con tu médico para comenzar.</p>
+      <a href="{{ url_for('paciente.cita') }}" class="btn btn-indigo mt-6">Solicitar cita</a>
+    </div>
+  </div>
+{% endif %}
+
+{% for c in citas %}
+{% set tiene_estudios = c.estudios|length > 0 %}
+{% set es_seg = c.consulta_padre_id is not none %}
+
+<details class="acc">
+  <summary>
+    {# Date tile #}
+    <div class="dtile {% if c.fecha.date() < today %}past{% endif %}">
+      <b>{{ c.fecha.strftime('%d') }}</b>
+      <span>{{ c.fecha.strftime('%b').upper() }}</span>
+    </div>
+
+    <div class="acc-main">
+      <div class="acc-title">
+        {% if es_seg %}Seguimiento{% else %}Consulta{% endif %}
+        {% if c.motivo %}&nbsp;·&nbsp;{{ c.motivo }}{% endif %}
+      </div>
+      <div class="acc-sub">
+        {% if c.medico and c.medico.usuario %}Dr./Dra. {{ c.medico.usuario.nombre }}{% else %}—{% endif %}
+        &nbsp;·&nbsp;{{ c.fecha.strftime('%d/%m/%Y') }}
+        &nbsp;·&nbsp;{{ c.fecha.strftime('%H:%M') }}
+      </div>
+    </div>
+
+    <div class="acc-tags">
+      <span class="badge badge--info">Agendada</span>
+      {% if tiene_estudios %}
+        <span class="badge badge--success">Imágenes subidas</span>
+      {% else %}
+        <span class="badge badge--warning">Falta subir imágenes</span>
+      {% endif %}
+    </div>
+
+    <svg class="acc-chev" viewBox="0 0 24 24" width="16" height="16" fill="none"
+         stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </summary>
+
+  <div class="acc-body">
+
+    {# ── Already has images ─────────────────────────────────────────────── #}
+    {% if tiene_estudios %}
+      <div class="dx-grid mb-4">
+        {% for e in c.estudios %}
+        {% set pred = e.prediccion_principal %}
+        <div class="eye-card">
+          <div class="eye-card__header">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            </svg>
+            {{ e.ojo_label }}
+            <span style="margin-left:auto">
+              {% if pred %}
+                <span class="badge badge--{{ pred.clase.value }}">{{ pred.clase.label }} (predicción)</span>
+              {% else %}
+                <span class="badge badge--neutral">Sin predicción</span>
+              {% endif %}
+            </span>
+          </div>
+          {% if e.imagen %}
+            <img class="eye-card__img"
+                 src="{{ url_for('ver_imagen', imagen_id=e.imagen.id) }}"
+                 alt="Retinografía {{ e.ojo_label }}" loading="lazy" />
+          {% endif %}
+          {% if pred and pred.probabilidades %}
+            <div class="eye-card__body">
+              <p style="font-size:.63rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">
+                Desglose del modelo predictivo · {{ pred.modelo.nombre if pred.modelo else 'Modelo' }} · {{ "%.1f"|format(pred.confianza * 100) }}%
+              </p>
+              {% for pp in pred.probabilidades %}
+              <div class="ia-row {% if pp.clase == pred.clase %}top{% endif %}">
+                <span class="ia-n" style="font-size:.72rem;width:90px">{{ pp.clase.label }}</span>
+                <span class="ia-track"><span class="ia-fill" style="width:{{ "%.0f"|format(pp.porcentaje) }}%"></span></span>
+                <span class="ia-v" style="font-size:.72rem;width:38px;text-align:right">{{ "%.1f"|format(pp.porcentaje) }}%</span>
+              </div>
+              {% endfor %}
+              <div class="notice mt-2" style="font-size:.72rem">
+                Pendiente de validación médica. Predicción del modelo sin confirmar.
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="notice mb-2" style="font-size:.78rem">
+        Estas retinografías ya fueron analizadas y forman parte de tu expediente, por lo que no se
+        pueden reemplazar. Si tu médico necesita imágenes nuevas, te las solicitará en una cita de seguimiento.
+      </div>
+
+    {% else %}
+      {# ── No images yet — primary upload form ────────────────────────── #}
+      <div class="notice mb-4">
+        <strong>Modelo predictivo:</strong> el sistema utiliza un modelo predictivo previamente entrenado
+        para clasificar las retinografías. El resultado es una predicción de apoyo;
+        el diagnóstico final lo confirma el médico.
+      </div>
+
+      <form method="POST"
+            action="{{ url_for('paciente.subir_desde_cita', consulta_id=c.id) }}"
+            enctype="multipart/form-data"
+            class="no-double-submit"
+            data-upload-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="dz-pair">
+          {{ dz('imagen_od', 'Ojo Derecho *') }}
+          {{ dz('imagen_oi', 'Ojo Izquierdo *') }}
+        </div>
+        <div class="flex gap-3 items-center">
+          <button type="submit" class="btn btn-indigo" disabled data-submit-btn>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+            </svg>
+            Subir y analizar
+          </button>
+          <span class="text-xs text-muted">Ambas imágenes son requeridas · PNG, JPG, BMP</span>
+        </div>
+      </form>
+    {% endif %}
+
+    {# Cancelar cita #}
+    <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);
+                display:flex;justify-content:flex-end">
+      <form method="POST"
+            action="{{ url_for('paciente.cancelar_cita_paciente', consulta_id=c.id) }}"
+            onsubmit="return confirm('¿Cancelar esta cita? Esta acción no se puede deshacer.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button type="submit" class="btn btn-red-ghost btn-sm">Cancelar cita</button>
+      </form>
+    </div>
+  </div>
+</details>
+{% endfor %}
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+(function () {
+  // Enable submit button only when both files selected, preview image
+  document.querySelectorAll("[data-upload-form]").forEach(function (form) {
+    var inputs = form.querySelectorAll("input[type=file]");
+    var btn    = form.querySelector("[data-submit-btn]");
+
+    function checkReady() {
+      if (btn) btn.disabled = !Array.from(inputs).every(i => i.files && i.files.length > 0);
+    }
+
+    inputs.forEach(function (input) {
+      var dz   = input.closest(".dropzone");
+      var img  = dz && dz.querySelector(".dz-img");
+      var name = dz && dz.querySelector(".dz-name");
+      var ph   = dz && dz.querySelector(".dz-placeholder");
+
+      function applyFile(file) {
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+          if (img)  { img.src = ev.target.result; img.style.display = "block"; }
+          if (name) { name.textContent = file.name; name.style.display = "block"; }
+          if (ph)   { ph.style.display = "none"; }
+          dz.classList.add("has-file");
+        };
+        reader.readAsDataURL(file);
+        checkReady();
+      }
+
+      input.addEventListener("change", function () {
+        if (input.files && input.files[0]) applyFile(input.files[0]);
+      });
+
+      if (dz) {
+        dz.addEventListener("dragover", function (e) { e.preventDefault(); dz.classList.add("over"); });
+        dz.addEventListener("dragleave", function () { dz.classList.remove("over"); });
+        dz.addEventListener("drop", function (e) {
+          e.preventDefault(); dz.classList.remove("over");
+          if (e.dataTransfer.files.length) {
+            // Programmatically set the file input files
+            var dt = new DataTransfer();
+            dt.items.add(e.dataTransfer.files[0]);
+            input.files = dt.files;
+            applyFile(e.dataTransfer.files[0]);
+          }
+        });
+      }
+    });
+    checkReady();
+  });
+})();
+</script>
+{% endblock %}

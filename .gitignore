@@ -1,0 +1,30 @@
+# Entorno y configuración local (contiene credenciales)
+.venv/
+.env
+.claude/
+__pycache__/
+*.pyc
+
+# Modelos: se descargan desde la sección Releases del repositorio
+modelos_tesis3/*
+!modelos_tesis3/.gitkeep
+
+# Datos de entrenamiento y evaluación (se descargan de Kaggle; ver README)
+dataset_tesis3/
+split_tesis3/
+test_externo_holdout/
+*.csv
+
+# Notebooks, figuras y documentos de la tesis (fuera del alcance del aplicativo)
+*.ipynb
+*.png
+!static/**/*.png
+*.docx
+figuras_tesis/
+
+# Scripts de desarrollo: la base de datos se restaura desde database/
+seed.py
+migrations/
+
+# Imágenes con datos personales reales
+static/uploads/3-750-*

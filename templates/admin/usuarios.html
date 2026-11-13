@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Gestión de usuarios</h1>
+  <p>Activa o desactiva cuentas del sistema y atiende las solicitudes de cancelación de datos personales.</p>
+</div>
+
+{# Search filters #}
+<form method="GET" class="flex gap-3 mb-6 items-center" style="flex-wrap:wrap">
+  <input class="form-control" type="search" name="q" value="{{ q }}"
+         placeholder="Buscar por nombre o correo…" style="max-width:22rem" />
+  <select class="form-control" name="rol" style="max-width:12rem">
+    <option value="">— Todos los roles —</option>
+    {% for r in RolApp %}
+      <option value="{{ r.value }}" {% if r.value == rol_filter %}selected{% endif %}>
+        {{ r.value|title }}
+      </option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-outline">Filtrar</button>
+  {% if q or rol_filter %}
+    <a href="{{ url_for('admin.usuarios') }}" class="btn btn-ghost">Limpiar</a>
+  {% endif %}
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Correo</th>
+          <th>Rol</th>
+          <th>Registrado</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.nombre }}</strong>
+            {% if u.paciente_data and u.paciente_data.anonimizado %}
+              <span class="badge badge--info" style="margin-left:.35rem">Anonimizado</span>
+            {% elif u.paciente_data and u.paciente_data.cancelacion_solicitada_en %}
+              <span class="badge badge--warning" style="margin-left:.35rem">Solicitó cancelación</span>
+            {% endif %}
+          </td>
+          <td class="text-muted text-sm">{{ u.email }}</td>
+          <td>
+            <span class="badge badge--{{ 'success' if u.rol.value == 'medico' else ('info' if u.rol.value == 'paciente' else 'warning') }}">
+              {{ u.rol.value }}
+            </span>
+          </td>
+          <td style="white-space:nowrap">{{ u.creado_en.strftime('%d/%m/%Y') }}</td>
+          <td>
+            {% if u.activo %}
+              <span class="badge badge--success">Activo</span>
+            {% else %}
+              <span class="badge badge--danger">Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.id != current_user.id %}
+              <form method="POST" action="{{ url_for('admin.toggle_usuario', uid=u.id) }}"
+                    style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button type="submit"
+                        class="btn btn-sm {{ 'btn-outline' if u.activo else 'btn-primary' }}"
+                        onclick="return confirm('¿{{ 'Desactivar' if u.activo else 'Activar' }} cuenta de {{ u.nombre }}?')">
+                  {{ 'Desactivar' if u.activo else 'Activar' }}
+                </button>
+              </form>
+            {% else %}
+              <span class="text-xs text-muted">(tu cuenta)</span>
+            {% endif %}
+            {% if u.paciente_data and not u.paciente_data.anonimizado %}
+              <form method="POST" action="{{ url_for('admin.anonimizar_paciente', uid=u.id) }}"
+                    style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button type="submit" class="btn btn-sm btn-outline"
+                        onclick="return confirm('¿Anonimizar al paciente #{{ u.id }}? Se eliminarán de forma permanente su nombre, correo, teléfono, cédula, fecha de nacimiento y sexo. El historial clínico se conserva sin datos identificativos.')">
+                  Anonimizar
+                </button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;color:var(--ink-muted);padding:2rem">
+            No se encontraron usuarios.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

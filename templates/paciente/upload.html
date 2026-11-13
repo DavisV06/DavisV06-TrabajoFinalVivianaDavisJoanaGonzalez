@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Subir retinografías{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Subir retinografías</h1>
+  <p>Sube ambas imágenes de fondo de ojo (OD y OI) para que el modelo predictivo las analice.</p>
+</div>
+
+{# Step bar #}
+<div class="step-bar mb-6">
+  <div class="step active">
+    <div class="step__num">1</div>
+    <span>Seleccionar consulta</span>
+  </div>
+  <div class="step__line"></div>
+  <div class="step">
+    <div class="step__num">2</div>
+    <span>Cargar imágenes</span>
+  </div>
+  <div class="step__line"></div>
+  <div class="step">
+    <div class="step__num">3</div>
+    <span>Análisis del modelo predictivo</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    {% if not consultas %}
+      <div style="text-align:center;padding:2rem 0;color:var(--ink-muted)">
+        <p style="font-weight:600;margin-bottom:.5rem">No tienes consultas disponibles.</p>
+        <p style="font-size:.9rem;margin-bottom:1.5rem">Solicita una cita médica antes de subir imágenes.</p>
+        <a href="{{ url_for('paciente.cita') }}" class="btn btn-primary">Solicitar cita</a>
+      </div>
+    {% else %}
+      <form id="upload-form" method="POST" enctype="multipart/form-data"
+            action="{{ url_for('paciente.upload') }}" class="no-double-submit">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <div class="form-group">
+          <label class="form-label" for="consulta_id">Consulta *</label>
+          <select class="form-control" id="consulta_id" name="consulta_id" required>
+            <option value="">— Selecciona una consulta —</option>
+            {% for c in consultas %}
+              <option value="{{ c.id }}">
+                {{ c.fecha.strftime('%d/%m/%Y') }} — Dr./Dra. {{ c.medico_nombre }}
+                {% if c.motivo %} ({{ c.motivo[:40] }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="upload-grid">
+          {# Ojo Derecho #}
+          <div>
+            <div class="drop-zone" id="zone-od">
+              <span class="drop-zone__badge drop-zone__badge--od">OD — Ojo Derecho</span>
+              <div class="drop-zone__icon">👁️</div>
+              <p class="drop-zone__label">
+                Arrastra tu imagen aquí<br />
+                <span class="text-xs">PNG, JPG, BMP · máx. 10 MB</span>
+              </p>
+              <input type="file" id="imagen_od" name="imagen_od"
+                     accept=".png,.jpg,.jpeg,.bmp" required />
+              <img class="drop-zone__preview" id="preview-od" alt="Vista previa OD" />
+            </div>
+          </div>
+
+          {# Ojo Izquierdo #}
+          <div>
+            <div class="drop-zone" id="zone-oi">
+              <span class="drop-zone__badge drop-zone__badge--oi">OI — Ojo Izquierdo</span>
+              <div class="drop-zone__icon">👁️</div>
+              <p class="drop-zone__label">
+                Arrastra tu imagen aquí<br />
+                <span class="text-xs">PNG, JPG, BMP · máx. 10 MB</span>
+              </p>
+              <input type="file" id="imagen_oi" name="imagen_oi"
+                     accept=".png,.jpg,.jpeg,.bmp" required />
+              <img class="drop-zone__preview" id="preview-oi" alt="Vista previa OI" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <button type="submit" id="submit-upload"
+                  class="btn btn-primary btn-lg"
+                  disabled
+                  title="Carga ambas imágenes para continuar">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 1 4.93 19.07"/></svg>
+            Analizar con el modelo predictivo
+          </button>
+          <p class="text-sm text-muted">Ambas imágenes son obligatorias.</p>
+        </div>
+
+        <p class="form-text mt-4" style="font-size:.8rem;line-height:1.5">
+          <strong>Aviso:</strong> El análisis del modelo predictivo es una herramienta de
+          apoyo diagnóstico. El resultado final debe ser validado por un médico oftalmólogo
+          certificado. El análisis tarda unos segundos.
+        </p>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

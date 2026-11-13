@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Mis estadísticas{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js" charset="utf-8"></script>
+<style>
+.chart-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+@media (max-width: 800px) { .chart-grid-2 { grid-template-columns: 1fr; } }
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card, .75rem);
+  padding: 1.1rem 1.25rem .9rem;
+  margin-bottom: 1.25rem;
+}
+.chart-card:last-child { margin-bottom: 0; }
+.chart-card__title {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 .75rem;
+}
+.chart-box      { width: 100%; height: 300px; }
+.chart-box--lg  { width: 100%; height: 360px; }
+.chart-box--map { width: 100%; height: 460px; }
+.chart-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--ink-muted); font-size: .875rem;
+}
+.stat-card--info    { border-top: 3px solid var(--info); }
+.stat-card--success { border-top: 3px solid var(--success); }
+.stat-card--amber   { border-top: 3px solid #d97706; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Mis estadísticas</h1>
+    <p>Actividad clínica, diagnósticos emitidos y origen geográfico de tus pacientes.</p>
+  </div>
+</div>
+
+{# ── KPIs ─────────────────────────────────────────────────────────────────── #}
+<div class="stat-grid" style="margin-bottom:1.25rem">
+  <div class="stat-card stat-card--navy">
+    <span class="stat-card__value">{{ kpis.pac_activos or 0 }}</span>
+    <span class="stat-card__label">Pacientes asignados</span>
+  </div>
+  <div class="stat-card stat-card--success">
+    <span class="stat-card__value">{{ kpis.pac_atendidos or 0 }}</span>
+    <span class="stat-card__label">Pacientes atendidos</span>
+  </div>
+  <div class="stat-card stat-card--teal">
+    <span class="stat-card__value">{{ kpis.total_dx or 0 }}</span>
+    <span class="stat-card__label">Diagnósticos emitidos</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-card__value">
+      {% if kpis.conf_prom %}{{ kpis.conf_prom }}%{% else %}—{% endif %}
+    </span>
+    <span class="stat-card__label">Confianza del modelo predictivo</span>
+  </div>
+  <div class="stat-card stat-card--amber">
+    <span class="stat-card__value">{{ kpis.citas_pendientes or 0 }}</span>
+    <span class="stat-card__label">Citas pendientes</span>
+  </div>
+</div>
+
+{# ── Fila 1: Prevalencia + Enfermedades detectadas ─────────────────────── #}
+<div class="chart-grid-2">
+  <div class="chart-card" style="margin-bottom:0">
+    <p class="chart-card__title">Enfermedades detectadas</p>
+    <div id="chart-prev" class="chart-box"></div>
+  </div>
+  <div class="chart-card" style="margin-bottom:0">
+    <p class="chart-card__title">Actividad mensual — últimos 12 meses</p>
+    <div id="chart-tend" class="chart-box"></div>
+  </div>
+</div>
+
+{# ── Fila 2: Mapa geográfico ───────────────────────────────────────────── #}
+<div class="chart-card" style="margin-top:1.25rem">
+  <p class="chart-card__title">Origen geográfico de pacientes (por provincia)</p>
+  <div id="chart-mapa" class="chart-box--map"></div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+const PREV = {{ prevalencia | tojson }};
+const TEND = {{ tendencia   | tojson }};
+const GEO  = {{ geo_data    | tojson }};
+
+const FONT = "'Gilroy', system-ui, -apple-system, sans-serif";
+const CFG  = {responsive: true, displayModeBar: false};
+
+function isDark() {
+  const dt = document.documentElement.dataset.theme;
+  if (dt === 'dark') return true;
+  if (dt === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function tok() {
+  const d = isDark();
+  return {
+    text:   d ? '#cbd5e1' : '#334155',
+    grid:   d ? '#1e293b' : '#f1f5f9',
+    land:   d ? '#1e293b' : '#f1f5f9',
+    ocean:  d ? '#0c1a2e' : '#dbeafe',
+    border: d ? '#475569' : '#94a3b8',
+    river:  d ? '#1d4ed8' : '#93c5fd',
+  };
+}
+function base(t, extra) {
+  return Object.assign({
+    paper_bgcolor: 'transparent',
+    plot_bgcolor:  'transparent',
+    font: {family: FONT, color: t.text, size: 12},
+    margin: {t: 10, r: 14, b: 40, l: 14},
+    showlegend: false,
+  }, extra);
+}
+
+/* ── Prevalencia (barras horizontales) ──────────────────────────── */
+function buildPrev() {
+  const el = document.getElementById('chart-prev');
+  if (!PREV.length) {
+    el.innerHTML = '<p class="chart-empty">Sin diagnósticos emitidos aún.</p>';
+    return;
+  }
+  const t = tok();
+  const COLS = {
+    'Normal': '#22c55e', 'Retinopatía Diabética': '#ef4444',
+    'Glaucoma': '#f59e0b', 'Cataratas': '#3b82f6',
+  };
+  const labels = PREV.map(p => p.clase);
+  const values = PREV.map(p => p.total);
+  const total  = values.reduce((a, b) => a + b, 0);
+  const pcts   = values.map(v => total ? ((v / total) * 100).toFixed(1) + '%' : '0%');
+
+  Plotly.newPlot(el, [{
+    type: 'bar', orientation: 'h',
+    y: labels, x: values,
+    marker: {color: labels.map(l => COLS[l] || '#94a3b8'), opacity: .9},
+    text: pcts, textposition: 'outside',
+    textfont: {color: t.text, size: 11},
+    hovertemplate: '<b>%{y}</b><br>%{x} diagnósticos<extra></extra>',
+  }], base(t, {
+    margin: {t: 10, r: 55, b: 40, l: 170},
+    xaxis: {showgrid: true, gridcolor: t.grid, zeroline: false, color: t.text, tickfont: {size: 11}},
+    yaxis: {autorange: 'reversed', showgrid: false, color: t.text, tickfont: {size: 12}},
+  }), CFG);
+}
+
+/* ── Tendencia mensual ──────────────────────────────────────────── */
+const MES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function lblMes(ym) {
+  const [y, m] = ym.split('-');
+  return MES_ES[parseInt(m, 10) - 1] + " '" + y.slice(2);
+}
+
+function buildTend() {
+  const el = document.getElementById('chart-tend');
+  const t  = tok();
+  const xs  = TEND.map(d => lblMes(d.mes));
+  const dxs = TEND.map(d => d.diagnosticos);
+  const cs  = TEND.map(d => d.citas);
+
+  Plotly.newPlot(el, [
+    {
+      name: 'Diagnósticos', type: 'scatter', mode: 'lines+markers',
+      x: xs, y: dxs,
+      line: {color: '#1e40af', width: 2.5, shape: 'spline'},
+      marker: {size: 5, color: '#1e40af'},
+      fill: 'tozeroy', fillcolor: 'rgba(30,64,175,0.09)',
+      hovertemplate: '<b>%{x}</b><br>Diagnósticos: %{y}<extra></extra>',
+    },
+    {
+      name: 'Citas', type: 'scatter', mode: 'lines+markers',
+      x: xs, y: cs,
+      line: {color: '#7c3aed', width: 2, dash: 'dot', shape: 'spline'},
+      marker: {size: 5, color: '#7c3aed'},
+      hovertemplate: '<b>%{x}</b><br>Citas: %{y}<extra></extra>',
+    },
+  ], base(t, {
+    showlegend: true,
+    legend: {font: {color: t.text, size: 10, family: FONT}, orientation: 'h', x: .5, xanchor: 'center', y: 1.08},
+    margin: {t: 32, r: 16, b: 44, l: 36},
+    xaxis: {showgrid: false, zeroline: false, color: t.text, tickfont: {size: 10}},
+    yaxis: {showgrid: true, gridcolor: t.grid, zeroline: true, zerolinecolor: t.grid,
+            rangemode: 'tozero', color: t.text, tickfont: {size: 10}},
+  }), CFG);
+}
+
+/* ── Mapa geográfico ────────────────────────────────────────────── */
+function buildMapa() {
+  const el = document.getElementById('chart-mapa');
+  if (!GEO.length) {
+    el.innerHTML = '<p class="chart-empty">Sin datos geográficos (pacientes sin cédula registrada).</p>';
+    return;
+  }
+  const t = tok();
+  const maxP  = Math.max(...GEO.map(g => g.n_pacientes), 1);
+  const sizes = GEO.map(g => 16 + (g.n_pacientes / maxP) * 55);
+  const texts = GEO.map(g =>
+    `<b>${g.provincia}</b><br>${g.n_pacientes} paciente${g.n_pacientes !== 1 ? 's' : ''}`
+  );
+
+  Plotly.newPlot(el, [{
+    type: 'scattergeo',
+    lat: GEO.map(g => g.lat),
+    lon: GEO.map(g => g.lon),
+    text: texts,
+    hoverinfo: 'text',
+    marker: {
+      size: sizes,
+      color: GEO.map(g => g.n_pacientes),
+      colorscale: [[0,'#c7d2fe'],[0.4,'#818cf8'],[0.75,'#4f46e5'],[1,'#1e1b4b']],
+      showscale: true,
+      colorbar: {
+        title: {text: 'Pacientes', font: {color: t.text, size: 11, family: FONT}},
+        tickfont: {color: t.text, size: 10, family: FONT},
+        len: .55, thickness: 12, x: 1.01,
+      },
+      line: {width: 1.5, color: '#ffffff'},
+      opacity: .9,
+    },
+  }], Object.assign(base(t, {}), {
+    margin: {t: 4, r: 60, b: 4, l: 4},
+    geo: {
+      resolution: 50,
+      projection: {type: 'mercator'},
+      lonaxis: {range: [-84.5, -77.0]},
+      lataxis: {range: [6.8, 10.8]},
+      showland: true,  landcolor: t.land,
+      showocean: true, oceancolor: t.ocean,
+      showcountries: true, countrycolor: t.border,
+      showsubunits: true,  subunitcolor: t.border,
+      showrivers: true,    rivercolor: t.river,
+      showlakes: true,     lakecolor: t.ocean,
+      bgcolor: 'transparent',
+    },
+  }), CFG);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  buildPrev();
+  buildTend();
+  buildMapa();
+});
+</script>
+{% endblock %}

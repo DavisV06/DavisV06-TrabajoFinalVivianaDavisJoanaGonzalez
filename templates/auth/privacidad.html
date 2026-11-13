@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Aviso de privacidad{% endblock %}
+
+{% block content %}
+<div class="{{ 'page-narrow' if current_user.is_authenticated else 'auth-page' }}">
+  <div class="{{ 'card card-p' if current_user.is_authenticated else 'auth-card' }}" style="max-width:46rem;margin:0 auto">
+    {% if not current_user.is_authenticated %}
+    <div class="auth-card__logo">
+      <img src="{{ url_for('static', filename='images/jyv-logo.svg') }}"
+           alt="JYV Oftalmología" height="64" style="width:auto;display:block;margin:0 auto" />
+    </div>
+    {% endif %}
+    <h2 style="margin-bottom:.25rem">Aviso de privacidad</h2>
+    <p class="text-sm text-muted" style="margin-bottom:1.25rem">Versión {{ version }}</p>
+
+    {% if pendiente %}
+      <div class="notice warn" style="margin-bottom:1.25rem">
+        Para seguir usando el sistema necesitamos que leas este aviso y confirmes que aceptas
+        el tratamiento de tus datos personales.
+      </div>
+    {% endif %}
+
+    <div class="privacidad-texto" style="line-height:1.65;font-size:.92rem">
+      <h3>Quién trata tus datos</h3>
+      <p>JYV Oftalmología es un prototipo académico desarrollado en la Universidad Tecnológica de Panamá
+      para apoyar la detección de enfermedades oftalmológicas. El tratamiento de los datos se rige por la
+      Ley 81 de 2019 sobre protección de datos personales y su reglamento, el Decreto Ejecutivo 285 de 2021.</p>
+
+      <h3>Qué datos tratamos</h3>
+      <ul>
+        <li>Datos de identificación y contacto: nombre, correo electrónico, teléfono y cédula.</li>
+        <li>Datos demográficos: fecha de nacimiento y sexo.</li>
+        <li>Datos de salud, considerados datos sensibles: citas, retinografías, resultados del modelo
+        predictivo, diagnósticos, notas clínicas y plan de tratamiento.</li>
+        <li>Datos técnicos de seguridad: fecha, hora y dirección IP de las operaciones que modifican
+        información.</li>
+      </ul>
+
+      <h3>Para qué los usamos</h3>
+      <p>Para agendar y atender tus consultas, analizar tus retinografías con el modelo predictivo,
+      permitir que el médico emita el diagnóstico, avisarte de cada novedad y generar tu expediente.
+      Los tableros analíticos usan estos datos en forma agregada. No se venden ni se ceden a terceros.</p>
+
+      <h3>Quién puede verlos</h3>
+      <p>Tú, el médico a cargo de tu atención y el administrador del sistema. Cada usuario solo puede
+      consultar la información que le corresponde; el sistema lo controla tanto en la aplicación como
+      en la base de datos.</p>
+
+      <h3>Cuánto tiempo los conservamos</h3>
+      <p>Tu historial clínico forma parte del expediente y se conserva. Si solicitas la cancelación de tus
+      datos, se eliminan tus datos de identificación y contacto, y el historial clínico queda anonimizado,
+      es decir, sin datos que permitan identificarte.</p>
+
+      <h3>Tus derechos</h3>
+      <ul>
+        <li><b>Acceso:</b> consulta tus datos en «Mis datos» y tus estudios en «Mis estudios», y descarga tu
+        expediente en PDF.</li>
+        <li><b>Rectificación:</b> corrige tus datos personales en «Mis datos».</li>
+        <li><b>Cancelación y oposición:</b> solicita en «Mis datos» que se anonimicen tus datos personales.</li>
+      </ul>
+      <p>Si consideras que tus derechos no fueron atendidos, puedes presentar una reclamación ante la
+      Autoridad Nacional de Transparencia y Acceso a la Información (ANTAI).</p>
+
+      <h3>Cómo los protegemos</h3>
+      <p>Las contraseñas se guardan transformadas y nunca en texto legible; cada usuario accede solo a su
+      información; las retinografías se entregan únicamente a usuarios autorizados; y los cambios quedan
+      registrados en un historial de auditoría.</p>
+    </div>
+
+    {% if pendiente %}
+      <form method="POST" action="{{ url_for('auth.aceptar_privacidad') }}" style="margin-top:1.5rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="form-group flex items-center gap-2">
+          <input type="checkbox" id="acepto_privacidad" name="acepto_privacidad" value="1" required />
+          <label for="acepto_privacidad" class="text-sm">He leído el aviso de privacidad y acepto el tratamiento
+            de mis datos personales, incluidos mis datos de salud, para las finalidades descritas.</label>
+        </div>
+        <div class="flex gap-3" style="flex-wrap:wrap">
+          <button type="submit" class="btn btn-indigo">Aceptar y continuar</button>
+          <a href="{{ url_for('auth.logout') }}" class="btn btn-outline">No acepto, cerrar sesión</a>
+        </div>
+      </form>
+    {% elif not current_user.is_authenticated %}
+      <p class="mt-6 text-sm" style="text-align:center">
+        <a href="{{ url_for('auth.register') }}" style="color:var(--indigo);font-weight:600">Volver al registro</a>
+        ·
+        <a href="{{ url_for('auth.login') }}" style="color:var(--indigo);font-weight:600">Iniciar sesión</a>
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

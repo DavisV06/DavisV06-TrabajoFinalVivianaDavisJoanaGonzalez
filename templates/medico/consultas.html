@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Consultas{% endblock %}
+
+{% block extra_head %}
+<style>
+.pac-acc { border:1px solid var(--border); border-radius:var(--r-lg); margin-bottom:.75rem; overflow:hidden; }
+.pac-acc > summary {
+  display:flex; align-items:center; gap:.75rem; padding:.85rem 1.1rem;
+  cursor:pointer; list-style:none; background:var(--surface);
+  transition:background .12s;
+}
+.pac-acc > summary:hover { background:var(--bg); }
+.pac-acc > summary::marker, .pac-acc > summary::-webkit-details-marker { display:none; }
+.pac-acc[open] > summary { background:var(--bg); border-bottom:1px solid var(--border); }
+.pac-avatar {
+  width:36px; height:36px; border-radius:50%;
+  background:var(--navy); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.85rem; font-weight:800; flex-shrink:0;
+}
+.pac-name { font-weight:700; font-size:.9rem; color:var(--ink); }
+.pac-meta { font-size:.72rem; color:var(--ink-muted); margin-top:.15rem; }
+.pac-badges { display:flex; gap:.35rem; flex-wrap:wrap; margin-left:auto; }
+.pac-chev {
+  transition:transform .2s; flex-shrink:0; color:var(--ink-muted);
+}
+.pac-acc[open] .pac-chev { transform:rotate(180deg); }
+.pac-body { padding:.75rem 1.1rem; background:var(--bg); }
+
+.cita-acc { border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:.5rem; background:var(--surface); }
+.cita-acc > summary {
+  display:flex; align-items:center; gap:.6rem; padding:.6rem .9rem;
+  cursor:pointer; list-style:none;
+}
+.cita-acc > summary::marker, .cita-acc > summary::-webkit-details-marker { display:none; }
+.cita-acc > summary:hover { background:var(--bg); }
+.cita-acc[open] > summary { border-bottom:1px solid var(--border); }
+.cita-dtile {
+  display:flex; flex-direction:column; align-items:center;
+  min-width:36px; padding:.2rem .4rem;
+  border-radius:var(--r-md); background:var(--indigo-soft);
+  line-height:1.1;
+}
+.cita-dtile b { font-size:.95rem; font-weight:900; color:var(--indigo); }
+.cita-dtile span { font-size:.6rem; font-weight:800; color:var(--indigo); text-transform:uppercase; }
+.cita-info { flex:1; min-width:0; }
+.cita-title { font-size:.84rem; font-weight:700; color:var(--ink); }
+.cita-sub   { font-size:.7rem; color:var(--ink-muted); }
+.cita-body  { padding:.75rem .9rem; font-size:.82rem; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Consultas</h1>
+  <p>Historial por paciente. Expande cada paciente para ver sus consultas.</p>
+</div>
+
+{% if not pacientes %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:3rem 2rem;color:var(--ink-muted)">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
+           style="margin:0 auto 1rem;display:block;opacity:.4">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <p style="font-weight:700;font-size:1rem">Sin pacientes registrados</p>
+      <p class="text-sm text-muted">Las citas que te asignen aparecerán aquí.</p>
+    </div>
+  </div>
+{% endif %}
+
+{% for pac in pacientes %}
+{% set citas = citas_map.get(pac.usuario_id, []) %}
+<details class="pac-acc">
+  <summary>
+    <div class="pac-avatar">{{ pac.nombre[0]|upper }}</div>
+    <div style="flex:1;min-width:0">
+      <p class="pac-name">{{ pac.nombre }}</p>
+      <p class="pac-meta">
+        {{ pac.n_consultas }} consulta{% if pac.n_consultas != 1 %}s{% endif %}
+        {% if pac.ultima_cita %} · última: {{ pac.ultima_cita.strftime('%d/%m/%Y') }}{% endif %}
+      </p>
+    </div>
+    <div class="pac-badges">
+      {% if pac.agendadas %}
+        <span class="badge badge--info">{{ pac.agendadas }} agendada{% if pac.agendadas != 1 %}s{% endif %}</span>
+      {% endif %}
+      {% if pac.atendidas %}
+        <span class="badge badge--success">{{ pac.atendidas }} atendida{% if pac.atendidas != 1 %}s{% endif %}</span>
+      {% endif %}
+    </div>
+    <svg class="pac-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </summary>
+
+  <div class="pac-body">
+    {% if not citas %}
+      <p class="text-sm text-muted">Sin consultas registradas.</p>
+    {% else %}
+      {% for c in citas %}
+      {% set badge_map = {'agendada':'info','atendida':'success','cancelada':'danger','referida':'warning'} %}
+      <details class="cita-acc">
+        <summary>
+          <div class="cita-dtile">
+            <b>{{ c.fecha.strftime('%d') }}</b>
+            <span>{{ c.fecha.strftime('%b').upper() }}</span>
+          </div>
+          <div class="cita-info">
+            <p class="cita-title">
+              {% if c.consulta_padre_id %}Seguimiento{% else %}Consulta inicial{% endif %}
+              {% if c.motivo %} · {{ c.motivo[:50] }}{% if c.motivo|length > 50 %}…{% endif %}{% endif %}
+            </p>
+            <p class="cita-sub">{{ c.fecha.strftime('%d/%m/%Y · %H:%M') }}</p>
+          </div>
+          <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-left:auto;padding-right:.5rem">
+            <span class="badge badge--{{ badge_map.get(c.estado, 'neutral') }}">{{ c.estado|title }}</span>
+            {% if c.n_estudios %}
+              {% if c.n_dx >= c.n_estudios %}
+                <span class="badge badge--success">{{ c.n_dx }} dx</span>
+              {% else %}
+                <span class="badge badge--warning">{{ c.n_estudios }} imágs.</span>
+              {% endif %}
+            {% endif %}
+          </div>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ink-muted)" stroke-width="2"
+               style="flex-shrink:0;transition:transform .2s" class="acc-chev">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </summary>
+        <div class="cita-body">
+          <a href="{{ url_for('medico.consulta', consulta_id=c.id) }}"
+             class="btn {{ 'btn-navy' if c.n_estudios else 'btn-outline' }} btn-sm">
+            {% if c.n_estudios %}Revisar estudios{% else %}Ver cita{% endif %}
+          </a>
+          {% if c.motivo %}
+            <span style="color:var(--ink-muted)">{{ c.motivo }}</span>
+          {% endif %}
+          {% if c.estado == 'agendada' %}
+            <span class="text-sm text-muted">La consulta está pendiente.</span>
+          {% elif c.estado == 'atendida' %}
+            <span class="text-sm" style="color:var(--success)">Atendida — diagnósticos disponibles.</span>
+          {% elif c.estado == 'cancelada' %}
+            <span class="text-sm" style="color:var(--danger)">Cancelada.</span>
+          {% endif %}
+        </div>
+      </details>
+      {% endfor %}
+    {% endif %}
+  </div>
+</details>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll(".cita-acc").forEach(function (el) {
+  el.addEventListener("toggle", function () {
+    var chev = el.querySelector(".acc-chev");
+    if (chev) chev.style.transform = el.open ? "rotate(180deg)" : "";
+  });
+});
+</script>
+{% endblock %}

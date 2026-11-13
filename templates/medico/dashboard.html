@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 860px) { .kpi-row { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 480px) { .kpi-row { grid-template-columns: 1fr; } }
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.1rem 1.25rem;
+}
+.kpi-card__label {
+  font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-muted); margin-bottom: .35rem;
+}
+.kpi-card__value {
+  font-size: 2rem; font-weight: 800;
+  color: var(--ink); line-height: 1;
+}
+.kpi-card--accent .kpi-card__value { color: var(--indigo); }
+.kpi-card--warn   .kpi-card__value { color: var(--amber); }
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+.section-title {
+  font-size: .72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-muted); margin-bottom: .75rem;
+}
+.cita-slot {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .55rem .75rem;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  margin-bottom: .4rem;
+}
+.cita-slot__time {
+  font-size: .78rem; font-weight: 700;
+  color: var(--ink-muted); min-width: 44px;
+}
+.cita-slot__dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.cita-slot__dot--agendada  { background: var(--info); }
+.cita-slot__dot--atendida  { background: var(--success); }
+.cita-slot__dot--cancelada { background: var(--danger); }
+.cita-slot__name { font-size: .85rem; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
+.cita-slot__meta { font-size: .72rem; color: var(--ink-muted); }
+
+.rev-item {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .5rem .75rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  margin-bottom: .4rem;
+  transition: background .12s;
+}
+.rev-item:hover { background: var(--bg); }
+.rev-item__avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--indigo-soft); color: var(--indigo);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; font-weight: 800; flex-shrink: 0;
+}
+.rev-item__info { flex: 1; min-width: 0; }
+.rev-item__name { font-size: .84rem; font-weight: 600; color: var(--ink); }
+.rev-item__meta { font-size: .7rem; color: var(--ink-muted); }
+
+/* Demographics section */
+.demog-grid {
+  display: grid;
+  grid-template-columns: 1fr 160px 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.demog-grid > div { min-width: 0; }
+.demog-grid canvas { display: block; width: 100%; height: 180px; }
+.demog-grid #chart-sexo { height: 160px; }
+@media (max-width: 900px) { .demog-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Greeting #}
+<div class="page-header">
+  <h1>Bienvenido/a, {{ current_user.nombre.split()[0] }}</h1>
+  <p class="text-muted text-sm" id="today-label"></p>
+</div>
+
+{# KPI row #}
+<div class="kpi-row">
+  <div class="kpi-card kpi-card--accent">
+    <p class="kpi-card__label">Citas hoy</p>
+    <p class="kpi-card__value">{{ kpis.hoy or 0 }}</p>
+  </div>
+  <div class="kpi-card kpi-card--warn">
+    <p class="kpi-card__label">Por revisar</p>
+    <p class="kpi-card__value">{{ kpis.por_revisar or 0 }}</p>
+  </div>
+  <div class="kpi-card">
+    <p class="kpi-card__label">Seguimientos activos</p>
+    <p class="kpi-card__value">{{ kpis.seguimientos or 0 }}</p>
+  </div>
+  <div class="kpi-card">
+    <p class="kpi-card__label">Pacientes este mes</p>
+    <p class="kpi-card__value">{{ kpis.pacientes_mes or 0 }}</p>
+  </div>
+</div>
+
+{# Two-column: today + pending reviews #}
+<div class="two-col">
+  {# Citas de hoy #}
+  <div class="card">
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <p class="section-title" style="margin:0">Citas de hoy</p>
+        <a href="{{ url_for('medico.agenda') }}" class="btn btn-ghost btn-sm">Ver agenda →</a>
+      </div>
+      {% if citas_hoy %}
+        {% for c in citas_hoy %}
+        <div class="cita-slot">
+          <span class="cita-slot__time">{{ c.fecha.strftime('%H:%M') }}</span>
+          <span class="cita-slot__dot cita-slot__dot--{{ c.estado }}"></span>
+          <span class="cita-slot__name">{{ c.paciente_nombre }}</span>
+          {% if c.n_estudios %}
+            <span class="badge badge--success" style="font-size:.63rem">{{ c.n_estudios }} imágs.</span>
+          {% else %}
+            <span class="badge badge--warning" style="font-size:.63rem">Sin imág.</span>
+          {% endif %}
+          <a href="{{ url_for('medico.consulta', consulta_id=c.id) }}" class="btn btn-outline btn-sm">Ver</a>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align:center;padding:2rem 0;color:var(--ink-muted)">
+          <p class="text-sm">No tienes citas programadas para hoy.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Revisiones pendientes #}
+  <div class="card">
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <p class="section-title" style="margin:0">Revisiones pendientes</p>
+        <a href="{{ url_for('medico.agenda') }}" class="btn btn-ghost btn-sm">Ver todas →</a>
+      </div>
+      {% if revisiones %}
+        {% for r in revisiones %}
+        <div class="rev-item">
+          <div class="rev-item__avatar">{{ r.paciente_nombre[0]|upper }}</div>
+          <div class="rev-item__info">
+            <p class="rev-item__name">{{ r.paciente_nombre }}</p>
+            <p class="rev-item__meta">{{ r.fecha.strftime('%d/%m/%Y · %H:%M') }} · {{ r.n_estudios }} imagen{% if r.n_estudios != 1 %}es{% endif %}</p>
+          </div>
+          <a href="{{ url_for('medico.consulta', consulta_id=r.id) }}" class="btn btn-navy btn-sm">Revisar</a>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align:center;padding:2rem 0;color:var(--ink-muted)">
+          <p class="text-sm">Sin revisiones pendientes. ¡Al día!</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# Perfil demográfico #}
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="card-body">
+    <p class="section-title">Perfil demográfico de mis pacientes</p>
+    <div class="demog-grid">
+
+      {# Age chart #}
+      <div>
+        <p style="font-size:.72rem;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">Grupos de edad</p>
+        <canvas id="chart-edad" height="180"></canvas>
+      </div>
+
+      {# Gender donut #}
+      <div>
+        <p style="font-size:.72rem;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">Sexo</p>
+        <canvas id="chart-sexo" height="160"></canvas>
+        <div id="sexo-legend" style="margin-top:.5rem;font-size:.7rem;color:var(--ink-muted)"></div>
+      </div>
+
+      {# Dx by age stacked bar #}
+      <div>
+        <p style="font-size:.72rem;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">Diagnósticos por grupo de edad</p>
+        <canvas id="chart-dx-edad" height="180"></canvas>
+        <div id="dx-edad-legend" style="margin-top:.5rem;font-size:.7rem;color:var(--ink-muted);display:flex;flex-wrap:wrap;gap:.25rem .75rem"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  /* today label */
+  var el = document.getElementById('today-label');
+  if (el) {
+    var now = new Date();
+    var s = now.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    el.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  /* chart helpers */
+  var COLORS = {
+    normal:    '#15803d',
+    rd:        '#be1e2d',
+    glaucoma:  '#b45309',
+    catarata:  '#3f51d9',
+  };
+  var SEXO_COLORS = ['#3f51d9', '#0f766e', '#b45309', '#be1e2d'];
+
+  function drawBarChart(canvasId, labels, values, color) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.offsetWidth || 300;
+    var H = canvas.height;
+    canvas.width = W;
+    var max = Math.max.apply(null, values) || 1;
+    var pad = { t: 10, r: 8, b: 28, l: 28 };
+    var barW = (W - pad.l - pad.r) / labels.length;
+    var barGap = barW * 0.2;
+    ctx.clearRect(0, 0, W, H);
+
+    // Get CSS var colors
+    var style = getComputedStyle(document.documentElement);
+    var inkMuted = style.getPropertyValue('--ink-muted').trim() || '#888';
+    var borderC  = style.getPropertyValue('--border').trim() || '#e1e7f0';
+
+    // Grid lines
+    ctx.strokeStyle = borderC; ctx.lineWidth = 0.5;
+    for (var i = 0; i <= 4; i++) {
+      var y = pad.t + (H - pad.t - pad.b) * i / 4;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    }
+
+    labels.forEach(function (label, i) {
+      var x = pad.l + i * barW + barGap / 2;
+      var bw = barW - barGap;
+      var bh = (values[i] / max) * (H - pad.t - pad.b);
+      var by = H - pad.b - bh;
+      ctx.fillStyle = color || '#3f51d9';
+      ctx.beginPath();
+      ctx.roundRect(x, by, bw, bh, [3, 3, 0, 0]);
+      ctx.fill();
+
+      // value label
+      if (values[i] > 0) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(values[i], x + bw / 2, by + 12);
+      }
+
+      // x label
+      ctx.fillStyle = inkMuted;
+      ctx.font = '9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x + bw / 2, H - 6);
+    });
+  }
+
+  function drawDonut(canvasId, labels, values, colors, legendId) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.offsetWidth || 160;
+    canvas.width = W;
+    var H = canvas.height;
+    var total = values.reduce(function (a, b) { return a + b; }, 0);
+    if (total === 0) {
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink-muted').trim() || '#888';
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sin datos', W / 2, H / 2);
+      return;
+    }
+    var cx = W / 2, cy = H / 2, ro = Math.min(W, H) / 2 - 6, ri = ro * 0.55;
+    var angle = -Math.PI / 2;
+    values.forEach(function (v, i) {
+      var slice = (v / total) * 2 * Math.PI;
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, ro, angle, angle + slice);
+      ctx.closePath();
+      ctx.fill();
+      angle += slice;
+    });
+    // hole
+    var style = getComputedStyle(document.documentElement);
+    ctx.fillStyle = style.getPropertyValue('--surface').trim() || '#fff';
+    ctx.beginPath(); ctx.arc(cx, cy, ri, 0, 2 * Math.PI); ctx.fill();
+    // total
+    ctx.fillStyle = style.getPropertyValue('--ink').trim() || '#111';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(total, cx, cy);
+
+    var leg = document.getElementById(legendId);
+    if (leg) {
+      leg.innerHTML = labels.map(function (l, i) {
+        return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px">' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:' + colors[i % colors.length] + ';display:inline-block"></span>' +
+          l + ' (' + values[i] + ')</span>';
+      }).join('');
+    }
+  }
+
+  function drawStackedBar(canvasId, groups, clases, data, colors) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.offsetWidth || 300;
+    var H = canvas.height;
+    canvas.width = W;
+    var pad = { t: 10, r: 8, b: 28, l: 28 };
+    var barW = (W - pad.l - pad.r) / groups.length;
+    var barGap = barW * 0.2;
+    var maxVal = Math.max.apply(null, groups.map(function (g) {
+      return clases.reduce(function (s, c) { return s + (data[g][c] || 0); }, 0);
+    })) || 1;
+    ctx.clearRect(0, 0, W, H);
+    var style = getComputedStyle(document.documentElement);
+    var borderC = style.getPropertyValue('--border').trim() || '#e1e7f0';
+    var inkMuted = style.getPropertyValue('--ink-muted').trim() || '#888';
+
+    ctx.strokeStyle = borderC; ctx.lineWidth = 0.5;
+    for (var i = 0; i <= 4; i++) {
+      var y = pad.t + (H - pad.t - pad.b) * i / 4;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    }
+
+    groups.forEach(function (g, gi) {
+      var x = pad.l + gi * barW + barGap / 2;
+      var bw = barW - barGap;
+      var yOff = H - pad.b;
+      clases.forEach(function (c, ci) {
+        var v = data[g][c] || 0;
+        if (v === 0) return;
+        var bh = (v / maxVal) * (H - pad.t - pad.b);
+        yOff -= bh;
+        ctx.fillStyle = colors[c] || '#888';
+        ctx.beginPath();
+        if (ci === 0) {
+          ctx.roundRect(x, yOff, bw, bh, [0, 0, 0, 0]);
+        } else {
+          ctx.roundRect(x, yOff, bw, bh, [0, 0, 0, 0]);
+        }
+        ctx.fill();
+      });
+      ctx.fillStyle = inkMuted;
+      ctx.font = '9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(g, x + bw / 2, H - 6);
+    });
+  }
+
+  /* data from server */
+  var edadLabels  = {{ edad_labels | tojson }};
+  var edadData    = {{ edad_data   | tojson }};
+  var sexoData    = {{ sexo_data   | tojson }};
+  var dxGroups    = {{ dx_edad_groups | tojson }};
+  var dxClases    = {{ dx_clases_list | tojson }};
+  var dxEdadData  = {{ dx_edad_data   | tojson }};
+
+  var sexoLabels = Object.keys(sexoData);
+  var sexoValues = Object.values(sexoData);
+
+  function renderCharts() {
+    drawBarChart('chart-edad', edadLabels, edadData, '#3f51d9');
+    drawDonut('chart-sexo', sexoLabels, sexoValues, SEXO_COLORS, 'sexo-legend');
+    drawStackedBar('chart-dx-edad', dxGroups, dxClases, dxEdadData, COLORS);
+    var dxNombres = { normal: 'Normal', rd: 'Retinopatía diabética', glaucoma: 'Glaucoma', catarata: 'Catarata' };
+    document.getElementById('dx-edad-legend').innerHTML = dxClases.map(function (c) {
+      return '<span style="display:inline-flex;align-items:center;gap:4px">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + COLORS[c] + ';display:inline-block"></span>' +
+        dxNombres[c] + '</span>';
+    }).join('');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderCharts);
+  } else {
+    renderCharts();
+  }
+})();
+</script>
+{% endblock %}

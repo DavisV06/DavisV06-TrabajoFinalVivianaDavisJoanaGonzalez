@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es" {% if current_user.is_authenticated %}class="role-{{ current_user.rol.value }}"{% endif %}>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>{% block title %}JYV Oftalmología{% endblock %} — JYV Oftalmología</title>
+  <link rel="icon" href="{{ url_for('static', filename='images/jyv-logo.svg') }}" type="image/svg+xml" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  {% if current_user.is_authenticated %}
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
+  {% endif %}
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+{% if current_user.is_authenticated %}
+
+{# ── Top bar ───────────────────────────────────────────────────── #}
+<header class="top-bar" role="banner">
+  <a href="{{ url_for(current_user.rol.value + '.dashboard') }}" class="top-brand">
+    <img class="top-brand__logo" src="{{ url_for('static', filename='images/jyv-logo-barra.svg') }}"
+         alt="JYV Oftalmología" width="117" height="52" />
+  </a>
+
+  <div class="top-actions">
+    {# Notification bell #}
+    {% set pending = current_user.pendientes_count %}
+    <div class="notif-wrap">
+      <button id="notif-btn" class="notif-badge"
+              aria-label="{{ pending }} notificaciones sin leer"
+              aria-expanded="false" aria-controls="notif-panel"
+              title="Notificaciones">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        {% if pending > 0 %}
+          <span class="notif-badge__count" id="notif-count">{{ pending }}</span>
+        {% else %}
+          <span class="notif-badge__count" id="notif-count" hidden>0</span>
+        {% endif %}
+      </button>
+
+      <div id="notif-panel" class="notif-panel" hidden role="dialog" aria-label="Notificaciones">
+        <div class="notif-panel__header">
+          <span class="notif-panel__title">Notificaciones</span>
+          <button id="notif-mark-all" class="btn btn-ghost btn-sm notif-panel__mark-all">
+            Marcar todas leídas
+          </button>
+        </div>
+        <div id="notif-list" class="notif-panel__list">
+          <p class="notif-panel__empty">Cargando…</p>
+        </div>
+      </div>
+    </div>
+
+    {# User avatar chip #}
+    <a class="avatar-btn" href="{{ url_for('auth.perfil') }}" title="Mis datos: {{ current_user.nombre }}" style="text-decoration:none;color:inherit">
+      <div class="avatar-btn__circle">{{ current_user.nombre[0]|upper }}</div>
+      <span class="text-sm">{{ current_user.nombre.split()[0] }}</span>
+    </a>
+
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Salir</a>
+  </div>
+</header>
+
+{# ── App shell ──────────────────────────────────────────────────── #}
+<div class="app-shell">
+
+  {# ── Sidebar ──────────────────────────────────────────────────── #}
+  <aside class="sidebar" role="complementary" aria-label="Menú lateral">
+
+    {% if current_user.rol.value == 'paciente' %}
+      <div class="sidebar__section">
+        <p class="sidebar__section-label">Paciente</p>
+        <a href="{{ url_for('paciente.dashboard') }}"
+           class="sidebar__link {% if request.endpoint == 'paciente.dashboard' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          <span>Inicio</span>
+        </a>
+        <a href="{{ url_for('paciente.cita') }}"
+           class="sidebar__link {% if request.endpoint == 'paciente.cita' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <span>Solicitar cita</span>
+        </a>
+        <a href="{{ url_for('paciente.citas_pendientes') }}"
+           class="sidebar__link {% if request.endpoint == 'paciente.citas_pendientes' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span>Citas pendientes</span>
+          {% if n_citas_sin_imagenes > 0 %}
+            <span class="sidebar__badge">{{ n_citas_sin_imagenes }}</span>
+          {% endif %}
+        </a>
+        <a href="{{ url_for('paciente.estudios') }}"
+           class="sidebar__link {% if request.endpoint == 'paciente.estudios' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span>Mis estudios</span>
+        </a>
+        <a href="{{ url_for('auth.perfil') }}"
+           class="sidebar__link {% if request.endpoint == 'auth.perfil' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>Mis datos</span>
+        </a>
+      </div>
+
+    {% elif current_user.rol.value == 'medico' %}
+      <div class="sidebar__section">
+        <p class="sidebar__section-label">Médico</p>
+        <a href="{{ url_for('medico.dashboard') }}"
+           class="sidebar__link {% if request.endpoint == 'medico.dashboard' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('medico.agenda') }}"
+           class="sidebar__link {% if request.endpoint == 'medico.agenda' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <span>Agenda</span>
+        </a>
+        <a href="{{ url_for('medico.consultas') }}"
+           class="sidebar__link {% if request.endpoint == 'medico.consultas' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>Consultas</span>
+        </a>
+        <a href="{{ url_for('medico.analytics') }}"
+           class="sidebar__link {% if request.endpoint == 'medico.analytics' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/>
+          </svg>
+          <span>Estadísticas</span>
+        </a>
+      </div>
+
+    {% elif current_user.rol.value == 'admin' %}
+      <div class="sidebar__section">
+        <p class="sidebar__section-label">Clínica</p>
+        <a href="{{ url_for('admin.dashboard') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          <span>Resumen general</span>
+        </a>
+        <a href="{{ url_for('admin.diagnosticos') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.diagnosticos' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span>Diagnósticos</span>
+        </a>
+        <a href="{{ url_for('admin.analytics') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.analytics' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span>Tableros analíticos</span>
+        </a>
+        <a href="{{ url_for('admin.equipo') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.equipo' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>Equipo médico</span>
+        </a>
+      </div>
+      <div class="sidebar__section">
+        <p class="sidebar__section-label">Gestión</p>
+        <a href="{{ url_for('admin.usuarios') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.usuarios' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <span>Usuarios</span>
+        </a>
+        <a href="{{ url_for('admin.modelos') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.modelos' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93A10 10 0 1 1 4.93 19.07"/>
+          </svg>
+          <span>Modelos predictivos</span>
+        </a>
+        <a href="{{ url_for('admin.auditoria') }}"
+           class="sidebar__link {% if request.endpoint == 'admin.auditoria' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Auditoría</span>
+        </a>
+      </div>
+    {% endif %}
+
+  </aside>
+
+  {# ── Main content ─────────────────────────────────────────────── #}
+  <main class="main" id="main-content">
+    <div class="content anim-fade">
+      {# Flash messages #}
+      {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+          <div class="flash-list" role="alert">
+            {% for category, message in messages %}
+              <div class="flash flash--{{ category }}" data-auto-dismiss>
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+
+    <footer class="footer">
+      JYV Oftalmología — Sistema de apoyo diagnóstico oftalmológico &nbsp;|&nbsp;
+      Uso exclusivo personal de salud autorizado &nbsp;|&nbsp;
+      Universidad Tecnológica de Panamá © 2026
+    </footer>
+  </main>
+
+</div>{# /app-shell #}
+
+{% else %}
+  {# Unauthenticated: render content block without layout wrapper #}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="flash-list" role="alert" style="position:fixed;top:1rem;right:1rem;z-index:999;max-width:24rem">
+        {% for category, message in messages %}
+          <div class="flash flash--{{ category }}" data-auto-dismiss>{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {{ self.content() }}
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Auditoría{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Registro de auditoría</h1>
+  <p>Trazabilidad completa de todas las operaciones del sistema.</p>
+</div>
+
+<form method="GET" class="flex gap-3 mb-6 items-center" style="flex-wrap:wrap">
+  <input class="form-control" type="search" name="usuario" value="{{ usuario_q }}"
+         placeholder="Nombre de usuario…" style="max-width:16rem" />
+  <select class="form-control" name="operacion" style="max-width:10rem">
+    <option value="">— Operación —</option>
+    {% for op, label in [('I','INSERT'), ('U','UPDATE'), ('D','DELETE')] %}
+      <option value="{{ op }}" {% if op == operacion %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select class="form-control" name="tabla" style="max-width:14rem">
+    <option value="">— Tabla —</option>
+    {% for t in tablas_disponibles %}
+      <option value="{{ t }}" {% if t == tabla %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-outline">Filtrar</button>
+  {% if usuario_q or operacion or tabla %}
+    <a href="{{ url_for('admin.auditoria') }}" class="btn btn-ghost">Limpiar</a>
+  {% endif %}
+</form>
+
+<p class="text-sm text-muted mb-4">{{ total }} registro{{ 's' if total != 1 }} encontrado{{ 's' if total != 1 }}</p>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th>Operación</th>
+          <th>Tabla</th>
+          <th>Registro</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in registros %}
+        <tr>
+          <td style="white-space:nowrap;font-variant-numeric:tabular-nums;font-size:.82rem">
+            {{ a.ocurrido_en.strftime('%d/%m/%Y %H:%M:%S') }}
+          </td>
+          <td class="text-sm">{{ a.nombre_usuario or '(sistema)' }}</td>
+          <td>
+            {% if a.rol %}
+              <span class="badge badge--{{ 'success' if a.rol == 'medico' else ('info' if a.rol == 'paciente' else 'warning') }}">
+                {{ a.rol }}
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% set op_map = {'I': 'INSERT', 'U': 'UPDATE', 'D': 'DELETE'} %}
+            <span class="badge badge--{{ 'danger' if a.operacion == 'D' else ('warning' if a.operacion == 'U' else 'neutral') }}">
+              {{ op_map.get(a.operacion, a.operacion) }}
+            </span>
+          </td>
+          <td class="text-sm text-muted">{{ a.tabla }}</td>
+          <td class="text-sm text-muted" style="font-variant-numeric:tabular-nums">
+            {{ a.registro_id or '—' }}
+          </td>
+          <td class="text-xs text-muted">{{ a.ip or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;color:var(--ink-muted);padding:2rem">
+            Sin registros para los filtros seleccionados.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# Pagination #}
+{% if total_pages > 1 %}
+<div class="flex items-center gap-2 mt-4 justify-between">
+  <p class="text-sm text-muted">
+    Página {{ page }} de {{ total_pages }}
+  </p>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+      <a href="{{ url_for('admin.auditoria', page=page-1, usuario=usuario_q, operacion=operacion, tabla=tabla) }}"
+         class="btn btn-outline btn-sm">← Anterior</a>
+    {% endif %}
+    {% if page < total_pages %}
+      <a href="{{ url_for('admin.auditoria', page=page+1, usuario=usuario_q, operacion=operacion, tabla=tabla) }}"
+         class="btn btn-outline btn-sm">Siguiente →</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

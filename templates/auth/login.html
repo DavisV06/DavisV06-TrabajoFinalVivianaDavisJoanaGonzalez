@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-card__logo">
+      <img src="{{ url_for('static', filename='images/jyv-logo.svg') }}"
+           alt="JYV Oftalmología" height="72" style="width:auto;display:block;margin:0 auto" />
+    </div>
+    <h2>Bienvenido</h2>
+    <p class="auth-card__subtitle">Ingresa tus credenciales para continuar</p>
+
+    {% with messages = get_flashed_messages(with_categories=True) %}
+      {% if messages %}
+        <div class="flash-list">
+          {% for cat, msg in messages %}
+            <div class="flash flash--{{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.login') }}" class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="form-group">
+        <label class="form-label" for="email">Correo electrónico</label>
+        <input class="form-control" type="email" id="email" name="email"
+               placeholder="correo@ejemplo.com" required autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Contraseña</label>
+        <input class="form-control" type="password" id="password" name="password"
+               placeholder="••••••••" required autocomplete="current-password" />
+      </div>
+      <div class="form-group flex items-center gap-2">
+        <input type="checkbox" id="remember" name="remember" />
+        <label for="remember" class="text-sm text-muted">Recordar sesión</label>
+      </div>
+      <button type="submit" class="btn btn-indigo w-full btn-lg">Iniciar sesión</button>
+    </form>
+
+    <p class="mt-6 text-sm text-muted" style="text-align:center">
+      ¿No tienes cuenta?
+      <a href="{{ url_for('auth.register') }}" style="color:var(--indigo);font-weight:600">Regístrate aquí</a>
+    </p>
+
+    <p class="auth-disclaimer">
+      Este sistema es de uso exclusivo del personal de salud autorizado y sus pacientes.<br />
+      Conforme a la Ley 81 de Protección de Datos Personales de la República de Panamá,
+      toda información clínica es tratada con máxima confidencialidad.<br />
+      <a href="{{ url_for('auth.privacidad') }}" style="color:var(--indigo)">Aviso de privacidad</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

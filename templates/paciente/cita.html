@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Agendar cita{% endblock %}
+
+{# ── Macro: dropzone ──────────────────────────────────────────────────────── #}
+{% macro dz(field, text, optional=false) %}
+<label>
+  <p style="font-size:.68rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">
+    {{ text }}{% if optional %} <span style="font-weight:400;font-size:.75rem;text-transform:none;letter-spacing:0;color:var(--ink-muted)">(opcional)</span>{% endif %}
+  </p>
+  <div class="dropzone">
+    <input type="file" name="{{ field }}" accept=".png,.jpg,.jpeg,.bmp" />
+    <img class="dz-img" src="" alt=""
+         style="display:none;width:100%;height:112px;object-fit:cover;border-radius:calc(var(--r-lg) - 2px)" />
+    <span class="dz-name"
+          style="display:none;position:absolute;left:0;right:0;bottom:0;background:rgba(15,27,45,.72);
+                 color:#fff;font-size:.68rem;padding:.25rem .5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <div class="dz-placeholder" style="display:flex;flex-direction:column;align-items:center;gap:.4rem;padding:1.25rem .75rem">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--muted)" stroke-width="1.5">
+        <polyline points="16 16 12 12 8 16"/>
+        <line x1="12" y1="12" x2="12" y2="21"/>
+        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+      </svg>
+      <span style="font-size:.72rem;color:var(--muted)">Arrastra o haz clic</span>
+      <span style="font-size:.65rem;color:var(--muted-2)">PNG, JPG, BMP</span>
+    </div>
+  </div>
+</label>
+{% endmacro %}
+
+{% block extra_head %}
+<style>
+.slots-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .25rem;
+}
+.slot-btn {
+  padding: .4rem .9rem;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: .875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  font-family: var(--font-body);
+}
+.slot-btn:hover:not(:disabled) {
+  border-color: var(--teal-600);
+  background: var(--teal-50);
+  color: var(--teal-700);
+}
+.slot-btn.selected {
+  background: var(--teal-600);
+  border-color: var(--teal-600);
+  color: #fff;
+}
+.slot-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+/* Dropzone styles */
+.dz-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: .75rem;
+}
+@media (max-width: 480px) { .dz-pair { grid-template-columns: 1fr; } }
+
+/* Upload toggle section */
+.upload-section {
+  display: none;
+  margin-top: .75rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.upload-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--ink);
+  padding: .4rem 0;
+}
+.upload-toggle-label input[type=checkbox] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--teal-600);
+  cursor: pointer;
+}
+
+/* File count hint */
+.files-hint {
+  font-size: .7rem;
+  color: var(--amber);
+  margin-top: .35rem;
+  display: none;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Agendar cita</h1>
+  <p>Elige tu médico, fecha y horario disponible.</p>
+</div>
+
+<div class="card" style="max-width:46rem">
+  <div class="card-body">
+    {% if not medicos %}
+      <div style="text-align:center;padding:2rem 0;color:var(--ink-muted)">
+        <p style="font-weight:600">No hay médicos disponibles en este momento.</p>
+      </div>
+    {% else %}
+    <form method="POST" action="{{ url_for('paciente.cita') }}"
+          id="form-cita" class="no-double-submit"
+          enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      {# Paso 1 — Médico #}
+      <div class="form-group">
+        <label class="form-label" for="medico_id">Médico oftalmólogo *</label>
+        <select class="form-control" id="medico_id" name="medico_id" required>
+          <option value="">— Selecciona un médico —</option>
+          {% for m in medicos %}
+            <option value="{{ m.usuario_id }}">
+              {{ m.nombre }}{% if m.especialidad %} — {{ m.especialidad }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {# Paso 2 — Fecha #}
+      <div class="form-group">
+        <label class="form-label" for="fecha">Fecha *</label>
+        <input class="form-control" type="date" id="fecha" name="fecha"
+               min="{{ today }}" required />
+        <p class="form-text">Elige primero el médico y luego la fecha para ver disponibilidad.</p>
+      </div>
+
+      {# Paso 3 — Hora (carga dinámica) #}
+      <div class="form-group" id="grupo-hora" style="display:none">
+        <label class="form-label">Horario disponible *</label>
+        <div id="slots-container" class="slots-grid">
+          <p class="text-sm text-muted" id="slots-loading">Cargando horarios…</p>
+        </div>
+        <input type="hidden" id="hora" name="hora" required />
+      </div>
+
+      {# Paso 4 — Motivo #}
+      <div class="form-group">
+        <label class="form-label" for="motivo">Motivo de consulta</label>
+        <textarea class="form-control" id="motivo" name="motivo" rows="3"
+                  placeholder="Describe brevemente el motivo…" maxlength="500"></textarea>
+      </div>
+
+      {# Paso 5 — Retinografías (opcional) #}
+      <div class="form-group">
+        <label class="upload-toggle-label">
+          <input type="checkbox" id="toggle-upload" />
+          Subir retinografías ahora
+          <span class="badge badge--neutral" style="font-size:.68rem;font-weight:700">Opcional</span>
+        </label>
+        <p class="form-text" style="margin-top:.1rem">
+          También puedes subirlas después desde <strong>Citas pendientes</strong>.
+        </p>
+
+        <div class="upload-section" id="upload-section">
+          <div class="notice" style="font-size:.8rem;padding:.55rem .75rem;margin-bottom:.9rem">
+            El sistema analiza las imágenes con un modelo predictivo para apoyar el diagnóstico del médico.
+            Se requieren <strong>ambos ojos</strong> para el análisis.
+          </div>
+          <div class="dz-pair">
+            {{ dz('imagen_od', 'Ojo Derecho') }}
+            {{ dz('imagen_oi', 'Ojo Izquierdo') }}
+          </div>
+          <p class="files-hint" id="files-hint">
+            Selecciona la imagen del otro ojo también para que el análisis sea completo.
+          </p>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:1rem;margin-top:.5rem">
+        <button type="submit" id="btn-agendar" class="btn btn-primary btn-lg" disabled>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Confirmar cita
+        </button>
+        <span class="text-xs text-muted">* Campos obligatorios</span>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // ── Slot selection ─────────────────────────────────────────────────────────
+  const selectMedico   = document.getElementById('medico_id');
+  const inputFecha     = document.getElementById('fecha');
+  const grupoHora      = document.getElementById('grupo-hora');
+  const slotsContainer = document.getElementById('slots-container');
+  const inputHora      = document.getElementById('hora');
+  const btnAgendar     = document.getElementById('btn-agendar');
+
+  const HORA_INICIO = 8;
+  const HORA_FIN    = 17;
+
+  function padZero(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function checkFormReady() {
+    btnAgendar.disabled = !(selectMedico.value && inputFecha.value && inputHora.value);
+  }
+
+  function renderSlots(horasOcupadas) {
+    slotsContainer.innerHTML = '';
+    inputHora.value = '';
+    checkFormReady();
+
+    const ahora = new Date();
+    const fechaSel = inputFecha.value;
+
+    for (let h = HORA_INICIO; h < HORA_FIN; h++) {
+      const label = `${padZero(h)}:00`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'slot-btn';
+      btn.textContent = label;
+
+      const isOcupado = horasOcupadas.includes(h);
+      const esPasado = (
+        fechaSel === ahora.toISOString().slice(0, 10) && h <= ahora.getHours()
+      );
+
+      if (isOcupado || esPasado) {
+        btn.disabled = true;
+        btn.title = isOcupado ? 'Horario ocupado' : 'Hora pasada';
+      } else {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          inputHora.value = label;
+          checkFormReady();
+        });
+      }
+      slotsContainer.appendChild(btn);
+    }
+    grupoHora.style.display = 'block';
+  }
+
+  async function fetchDisponibilidad() {
+    const mid   = selectMedico.value;
+    const fecha = inputFecha.value;
+    if (!mid || !fecha) return;
+
+    slotsContainer.innerHTML = '<p class="text-sm text-muted">Cargando horarios…</p>';
+    grupoHora.style.display = 'block';
+    inputHora.value = '';
+    checkFormReady();
+
+    try {
+      const res  = await fetch(`/paciente/doctor/${mid}/disponibilidad?fecha=${fecha}`, { credentials: 'same-origin' });
+      const data = await res.json();
+      renderSlots(data.horas_ocupadas || []);
+    } catch {
+      slotsContainer.innerHTML = '<p class="text-sm" style="color:var(--danger)">Error al cargar horarios. Recarga la página.</p>';
+    }
+  }
+
+  selectMedico.addEventListener('change', fetchDisponibilidad);
+  inputFecha.addEventListener('change', fetchDisponibilidad);
+
+  // ── Upload toggle ──────────────────────────────────────────────────────────
+  const toggleUpload  = document.getElementById('toggle-upload');
+  const uploadSection = document.getElementById('upload-section');
+  const filesHint     = document.getElementById('files-hint');
+
+  if (toggleUpload) {
+    toggleUpload.addEventListener('change', function () {
+      uploadSection.style.display = this.checked ? 'block' : 'none';
+      if (!this.checked) {
+        // Clear file inputs when hiding section
+        uploadSection.querySelectorAll('input[type=file]').forEach(inp => {
+          inp.value = '';
+          var dz = inp.closest('.dropzone');
+          if (dz) {
+            var img  = dz.querySelector('.dz-img');
+            var name = dz.querySelector('.dz-name');
+            var ph   = dz.querySelector('.dz-placeholder');
+            if (img)  { img.style.display = 'none'; img.src = ''; }
+            if (name) { name.style.display = 'none'; }
+            if (ph)   { ph.style.display = 'flex'; }
+            dz.classList.remove('has-file');
+          }
+        });
+        if (filesHint) filesHint.style.display = 'none';
+      }
+    });
+  }
+
+  // ── Dropzone previews + hint ───────────────────────────────────────────────
+  document.querySelectorAll('.dropzone input[type=file]').forEach(function (input) {
+    var dz   = input.closest('.dropzone');
+    var img  = dz && dz.querySelector('.dz-img');
+    var name = dz && dz.querySelector('.dz-name');
+    var ph   = dz && dz.querySelector('.dz-placeholder');
+
+    function applyFile(file) {
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        if (img)  { img.src = ev.target.result; img.style.display = 'block'; }
+        if (name) { name.textContent = file.name; name.style.display = 'block'; }
+        if (ph)   { ph.style.display = 'none'; }
+        dz.classList.add('has-file');
+        updateFilesHint();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    input.addEventListener('change', function () {
+      if (input.files && input.files[0]) applyFile(input.files[0]);
+    });
+
+    if (dz) {
+      dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('over'); });
+      dz.addEventListener('dragleave', function () { dz.classList.remove('over'); });
+      dz.addEventListener('drop', function (e) {
+        e.preventDefault(); dz.classList.remove('over');
+        if (e.dataTransfer.files.length) {
+          var dt = new DataTransfer();
+          dt.items.add(e.dataTransfer.files[0]);
+          input.files = dt.files;
+          applyFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+  });
+
+  function updateFilesHint() {
+    if (!uploadSection || !filesHint) return;
+    var inputs = uploadSection.querySelectorAll('input[type=file]');
+    var count  = Array.from(inputs).filter(i => i.files && i.files.length > 0).length;
+    filesHint.style.display = (count === 1) ? 'block' : 'none';
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Equipo médico{% endblock %}
+
+{% block extra_head %}
+<style>
+.equipo-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.equipo-table th {
+  text-align:left; padding:.45rem .75rem;
+  font-size:.68rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--ink-muted);
+  border-bottom:1px solid var(--border); background:var(--bg);
+  white-space: nowrap;
+}
+.equipo-table td { padding:.55rem .75rem; border-bottom:1px solid var(--border); vertical-align:middle; }
+.equipo-table tr:last-child td { border-bottom:none; }
+.equipo-table tr:hover td { background:var(--bg); }
+
+.rect-bar-track { display:block; height:5px; border-radius:3px; background:var(--border); margin-top:.2rem; }
+.rect-bar-fill  { display:block; height:100%; border-radius:3px; background:var(--amber); }
+
+.med-avatar {
+  width:32px; height:32px; border-radius:50%;
+  background:var(--navy); color:#fff;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:.78rem; font-weight:800; flex-shrink:0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+  <div>
+    <h1>Equipo médico</h1>
+    <p>Resumen de actividad de cada médico en el sistema.</p>
+  </div>
+  <a href="{{ url_for('admin.usuarios') }}" class="btn btn-outline btn-sm">Gestionar usuarios →</a>
+</div>
+
+{% if medicos %}
+<div class="card">
+  <div style="overflow-x:auto">
+    <table class="equipo-table">
+      <thead>
+        <tr>
+          <th>Médico</th>
+          <th>Especialidad</th>
+          <th style="text-align:right">Pac. activos/mes</th>
+          <th style="text-align:right">Citas/mes</th>
+          <th style="text-align:right">Total dx</th>
+          <th style="min-width:110px">Tasa rect.</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in medicos %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:.6rem">
+              <div class="med-avatar">{{ m.nombre[0]|upper }}</div>
+              <div>
+                <p style="font-weight:700;color:var(--ink);line-height:1.2">{{ m.nombre }}</p>
+                <p style="font-size:.68rem;color:var(--ink-muted)">{{ m.email }}</p>
+              </div>
+            </div>
+          </td>
+          <td>{{ m.especialidad or '—' }}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ m.pac_activos or 0 }}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ m.citas_mes or 0 }}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ m.total_dx or 0 }}</td>
+          <td>
+            {% if m.tasa_rect is not none %}
+              <span style="font-size:.78rem;font-weight:700;color:var(--amber)">{{ m.tasa_rect }}%</span>
+              <span class="rect-bar-track">
+                <span class="rect-bar-fill" style="width:{{ [m.tasa_rect or 0, 100] | min }}%"></span>
+              </span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if m.activo %}
+              <span class="badge badge--success">Activo</span>
+            {% else %}
+              <span class="badge badge--neutral">Inactivo</span>
+            {% endif %}
+            {% if m.vigente_hasta %}
+              <span class="badge badge--warning" style="font-size:.63rem">
+                hasta {{ m.vigente_hasta.strftime('%d/%m/%Y') if m.vigente_hasta else '' }}
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:3rem 2rem;color:var(--ink-muted)">
+      <p style="font-weight:700">Sin médicos registrados en el sistema.</p>
+      <a href="{{ url_for('admin.usuarios') }}" class="btn btn-indigo mt-6">Añadir médico</a>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

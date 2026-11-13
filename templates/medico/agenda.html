@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Agenda{% endblock %}
+
+{% block extra_head %}
+<style>
+.tab-bar { display:flex; gap:.375rem; flex-wrap:wrap; }
+.tab-btn {
+  padding:.35rem .9rem; border-radius:var(--r-full);
+  border:1.5px solid var(--border); background:var(--surface);
+  font-size:.8125rem; font-weight:600; cursor:pointer;
+  color:var(--ink-muted); transition:background .15s, border-color .15s, color .15s;
+  font-family:var(--font-body);
+}
+.tab-btn:hover { border-color:var(--navy-600); color:var(--navy-800); }
+.tab-btn.active { background:var(--navy-800); border-color:var(--navy-800); color:#fff; }
+.stat-card--info    { border-top:3px solid var(--info); }
+.stat-card--success { border-top:3px solid var(--success); }
+.stat-card--danger  { border-top:3px solid var(--danger); }
+.btn-danger { background:var(--danger); color:#fff; border-color:var(--danger); }
+.btn-danger:hover { background:#991b1b; border-color:#991b1b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+  <div>
+    <h1>Agenda</h1>
+    <p>Lista completa de citas — filtra, modifica, revisa.</p>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:1.5rem">
+  <div class="stat-card">
+    <p class="stat-card__label">Citas este mes</p>
+    <p class="stat-card__value">{{ stats.mes_total or 0 }}</p>
+  </div>
+  <div class="stat-card stat-card--warning" style="cursor:pointer" onclick="aplicarFiltro('por_revisar')">
+    <p class="stat-card__label">Por revisar</p>
+    <p class="stat-card__value">{{ por_revisar or 0 }}</p>
+  </div>
+  <div class="stat-card stat-card--info">
+    <p class="stat-card__label">Agendadas</p>
+    <p class="stat-card__value">{{ stats.agendadas or 0 }}</p>
+  </div>
+  <div class="stat-card stat-card--success">
+    <p class="stat-card__label">Atendidas</p>
+    <p class="stat-card__value">{{ stats.atendidas or 0 }}</p>
+  </div>
+  <div class="stat-card stat-card--danger">
+    <p class="stat-card__label">Canceladas</p>
+    <p class="stat-card__value">{{ stats.canceladas or 0 }}</p>
+  </div>
+</div>
+
+<div class="tab-bar" style="margin-bottom:1rem">
+  <button class="tab-btn active" data-filter="all">Todas</button>
+  <button class="tab-btn" data-filter="por_revisar">Por revisar</button>
+  <button class="tab-btn" data-filter="agendada">Agendadas</button>
+  <button class="tab-btn" data-filter="atendida">Atendidas</button>
+  <button class="tab-btn" data-filter="cancelada">Canceladas</button>
+  <button class="tab-btn" data-filter="referida">Referidas</button>
+</div>
+
+{% if not consultas %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:3rem 2rem;color:var(--ink-muted)">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
+           style="margin:0 auto 1rem;display:block"><rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <p style="font-weight:600">Sin citas registradas</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card" id="consultas-list">
+    {% for c in consultas %}
+    {% set estado_val = c.estado %}
+    <div class="inbox-item" data-estado="{{ estado_val }}" data-pendientes="{{ c.n_pendientes or 0 }}">
+      <div class="inbox-item__avatar">{{ c.paciente_nombre[0]|upper }}</div>
+      <div class="inbox-item__info">
+        <p class="inbox-item__name">{{ c.paciente_nombre }}</p>
+        <p class="inbox-item__meta">
+          {{ c.fecha.strftime('%d/%m/%Y a las %H:%M') if c.fecha else '—' }}
+          {% if c.motivo %} · {{ c.motivo[:55] }}{% if c.motivo|length > 55 %}…{% endif %}{% endif %}
+          {% if estado_val == 'referida' and c.referida_a_nombre %}
+            <span style="color:var(--warning);font-weight:600"> · Referida a {{ c.referida_a_nombre }}</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="inbox-item__actions">
+        {% set badge_map = {'agendada':'info','atendida':'success','cancelada':'danger','referida':'warning'} %}
+        <span class="badge badge--{{ badge_map.get(estado_val, 'badge-neutral') }}">{{ estado_val|title }}</span>
+        {% if c.n_pendientes and c.n_pendientes > 0 %}
+          <span class="badge badge--warning">{{ c.n_pendientes }} pend.</span>
+        {% elif c.n_estudios %}
+          <span class="badge badge--success">{{ c.n_estudios }} estudios</span>
+        {% endif %}
+        <a href="{{ url_for('medico.consulta', consulta_id=c.id) }}"
+           class="btn {{ 'btn-navy' if c.n_estudios else 'btn-outline' }} btn-sm">
+          {{ 'Revisar' if c.n_estudios else 'Ver cita' }}
+        </a>
+        {% if estado_val == 'agendada' %}
+          <button class="btn btn-outline btn-sm" data-action="modificar" data-cid="{{ c.id }}"
+                  data-fecha="{{ c.fecha.strftime('%Y-%m-%d') if c.fecha else '' }}"
+                  data-hora="{{ c.fecha.strftime('%H:%M') if c.fecha else '' }}"
+                  data-motivo="{{ c.motivo or '' }}">Modificar</button>
+          <button class="btn btn-ghost btn-sm" data-action="cancelar" data-cid="{{ c.id }}"
+                  data-paciente="{{ c.paciente_nombre }}"
+                  data-fecha="{{ c.fecha.strftime('%d/%m/%Y %H:%M') if c.fecha else '' }}">Cancelar</button>
+          <button class="btn btn-ghost btn-sm" data-action="referir" data-cid="{{ c.id }}"
+                  data-paciente="{{ c.paciente_nombre }}">Referir</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <p class="notif-panel__empty" id="list-empty" style="display:none">No hay citas con ese estado.</p>
+  </div>
+{% endif %}
+
+{# Modales #}
+<div class="modal-overlay" id="modal-modificar" role="dialog" aria-modal="true" aria-labelledby="mod-title">
+  <div class="modal">
+    <div class="modal__header">
+      <p class="modal__title" id="mod-title">Modificar cita</p>
+      <button class="btn btn-ghost btn-sm modal-close" aria-label="Cerrar">✕</button>
+    </div>
+    <form id="form-modificar" method="POST" action="" class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="modal__body">
+        <div class="form-group">
+          <label class="form-label" for="mod-fecha">Nueva fecha *</label>
+          <input class="form-control" type="date" id="mod-fecha" name="fecha" min="{{ hoy }}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="mod-hora">Nueva hora *</label>
+          <select class="form-control" id="mod-hora" name="hora" required>
+            {% for h in range(8, 17) %}
+              <option value="{{ '%02d'|format(h) }}:00">{{ '%02d'|format(h) }}:00</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="mod-motivo">Motivo</label>
+          <textarea class="form-control" id="mod-motivo" name="motivo" rows="2" maxlength="500"></textarea>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn-outline modal-close">Cancelar</button>
+        <button type="submit" class="btn btn-navy">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cancelar" role="dialog" aria-modal="true" aria-labelledby="can-title">
+  <div class="modal">
+    <div class="modal__header">
+      <p class="modal__title" id="can-title">Cancelar cita</p>
+      <button class="btn btn-ghost btn-sm modal-close" aria-label="Cerrar">✕</button>
+    </div>
+    <form id="form-cancelar" method="POST" action="" class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="modal__body">
+        <p class="text-sm" id="can-desc" style="margin-bottom:1rem;color:var(--ink-muted)"></p>
+        <div class="form-group">
+          <label class="form-label" for="can-notas">Motivo de cancelación</label>
+          <textarea class="form-control" id="can-notas" name="notas_cancel" rows="3" maxlength="500"
+                    placeholder="Indica el motivo (opcional)…"></textarea>
+        </div>
+        <p class="form-text" style="color:var(--danger)">Esta acción notificará al paciente y no se puede deshacer.</p>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn-outline modal-close">Volver</button>
+        <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-referir" role="dialog" aria-modal="true" aria-labelledby="ref-title">
+  <div class="modal">
+    <div class="modal__header">
+      <p class="modal__title" id="ref-title">Referir cita a colega</p>
+      <button class="btn btn-ghost btn-sm modal-close" aria-label="Cerrar">✕</button>
+    </div>
+    <form id="form-referir" method="POST" action="" class="no-double-submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="modal__body">
+        <p class="text-sm" id="ref-desc" style="margin-bottom:1rem;color:var(--ink-muted)"></p>
+        <div class="form-group">
+          <label class="form-label" for="ref-colega">Colega a quien referir *</label>
+          <select class="form-control" id="ref-colega" name="colega_id" required>
+            <option value="">— Selecciona un colega —</option>
+            {% for col in colegas %}
+              <option value="{{ col.usuario_id }}">{{ col.nombre }}{% if col.especialidad %} — {{ col.especialidad }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          {% if not colegas %}
+            <p class="form-text" style="color:var(--warning)">No hay otros médicos activos disponibles.</p>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ref-notas">Notas para el colega</label>
+          <textarea class="form-control" id="ref-notas" name="notas_referido" rows="3" maxlength="500"
+                    placeholder="Contexto clínico, motivo del referido…"></textarea>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn-outline modal-close">Cancelar</button>
+        <button type="submit" class="btn btn-primary" {% if not colegas %}disabled{% endif %}>Confirmar referido</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const tabBtns  = document.querySelectorAll(".tab-btn");
+  const items    = document.querySelectorAll(".inbox-item[data-estado]");
+  const emptyMsg = document.getElementById("list-empty");
+
+  function aplicarFiltro(filter) {
+    tabBtns.forEach(b => b.classList.remove("active"));
+    const active = document.querySelector(`.tab-btn[data-filter="${filter}"]`);
+    if (active) active.classList.add("active");
+    let visible = 0;
+    items.forEach(item => {
+      let show;
+      if (filter === "all") {
+        show = true;
+      } else if (filter === "por_revisar") {
+        show = item.dataset.estado === "agendada" && parseInt(item.dataset.pendientes || "0") > 0;
+      } else {
+        show = item.dataset.estado === filter;
+      }
+      item.style.display = show ? "" : "none";
+      if (show) visible++;
+    });
+    if (emptyMsg) emptyMsg.style.display = visible === 0 ? "block" : "none";
+  }
+  window.activarFiltro = aplicarFiltro;
+  tabBtns.forEach(btn => btn.addEventListener("click", () => aplicarFiltro(btn.dataset.filter)));
+
+  function openOverlay(id) { const el = document.getElementById(id); if (el) el.classList.add("open"); }
+  function closeAll() { document.querySelectorAll(".modal-overlay.open").forEach(o => o.classList.remove("open")); }
+  document.querySelectorAll(".modal-overlay").forEach(o => o.addEventListener("click", e => { if (e.target === o) closeAll(); }));
+  document.querySelectorAll(".modal-close").forEach(btn => btn.addEventListener("click", closeAll));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAll(); });
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => e.stopPropagation()));
+
+  document.querySelectorAll("[data-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { action, cid, paciente = "", fecha = "", hora = "", motivo = "" } = btn.dataset;
+      if (action === "modificar") {
+        document.getElementById("form-modificar").action = `/medico/consulta/${cid}/modificar`;
+        document.getElementById("mod-fecha").value  = fecha;
+        document.getElementById("mod-hora").value   = hora;
+        document.getElementById("mod-motivo").value = motivo;
+        openOverlay("modal-modificar");
+      } else if (action === "cancelar") {
+        document.getElementById("form-cancelar").action = `/medico/consulta/${cid}/cancelar`;
+        document.getElementById("can-desc").textContent = `¿Cancelar la cita de ${paciente} del ${btn.dataset.fecha}?`;
+        document.getElementById("can-notas").value = "";
+        openOverlay("modal-cancelar");
+      } else if (action === "referir") {
+        document.getElementById("form-referir").action = `/medico/consulta/${cid}/referir`;
+        document.getElementById("ref-desc").textContent = `Referir la cita de ${paciente} a un colega.`;
+        document.getElementById("ref-colega").value  = "";
+        document.getElementById("ref-notas").value   = "";
+        openOverlay("modal-referir");
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
